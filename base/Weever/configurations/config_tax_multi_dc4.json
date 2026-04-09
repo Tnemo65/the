@@ -1,0 +1,355 @@
+{
+  "csvPath": "data/tax_random_0_id.csv",
+  "maxRows": 2000000,
+  "tIdSetType": "RoaringBitSet",
+  "measureMemory": true,
+  "parallel": false,
+  "runId": 0,
+  "sortOrder": "selectivityOnly",
+  "inverseSorting": false,
+  "combinePrefix": false,
+  "experimentName": "",
+  "dbName": "",
+  "measureGranularity": 1000,
+  "types": [
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "FLOAT",
+    "FLOAT",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER"
+  ],
+  "keyColumns": [
+    0
+  ],
+  "constraints": [
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 8,
+        "colIdx2": 8,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 8,
+        "colIdx2": 8,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 8,
+        "colIdx2": 8,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 8,
+        "colIdx2": 8,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 8,
+        "colIdx2": 8,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 8,
+        "colIdx2": 8,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 6,
+        "colIdx2": 6,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 6,
+        "colIdx2": 6,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 6,
+        "colIdx2": 6,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 6,
+        "colIdx2": 6,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 6,
+        "colIdx2": 6,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 4,
+        "colIdx2": 4,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 4,
+        "colIdx2": 4,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 4,
+        "colIdx2": 4,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      }
+    ]
+  ]
+}

@@ -1,0 +1,101 @@
+\chapter{Mô hình hóa và giải pháp đề xuất}
+
+\section{Tổng quan kiến trúc}
+\noindent\textit{Nguồn tham chiếu:}
+\href{https://arxiv.org/abs/2506.06147}{Stream DaQ} \textbar{}
+\href{https://dl.acm.org/doi/10.14778/3659437.3659454}{Rapidash} \textbar{}
+\href{https://dl.acm.org/doi/10.14778/3717755.3717761}{Weever}
+
+WAVES được đề xuất như một kiến trúc stream-first với chiến lược trạng thái lai. Các kiểm tra nhẹ được thực hiện inline trên luồng chính, trong khi các luật logic nặng được chuyển sang một constraint engine chạy song song. Cách tách lớp này giúp hệ thống không biến mọi bước xử lý trong pipeline thành điểm nghẽn.
+
+\begin{itemize}
+  \item Tiếp nhận dữ liệu từ message broker và chia thành các cửa sổ thời gian.
+  \item Thực hiện các light checks ngay trên luồng chính.
+  \item Đưa các luật logic đan chéo sang sidecar constraint engine.
+  \item Đánh giá kết quả bằng cơ chế delay-aware dựa trên watermark.
+  \item Phát ra quality meta-stream phục vụ quan sát và cảnh báo.
+\end{itemize}
+
+Thay vì xây một runtime mới từ đầu, báo cáo đề xuất tái sử dụng tư duy và một phần cấu trúc của Stream DaQ để quản lý cửa sổ, bộ nhớ và meta-stream đầu ra. Phần lõi mặc định không đủ cho denial constraints sẽ được thay bằng engine chuyên biệt hơn.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.96\linewidth]{waves_architecture.png}
+  \caption{Sơ đồ khái quát kiến trúc WAVES được chèn từ tài liệu DOCX gốc.}
+  \label{fig:waves-framework}
+\end{figure}
+
+\section{Module 1 -- Incremental Constraint Engine}
+\noindent\textit{Nguồn tham chiếu:}
+\href{https://dl.acm.org/doi/10.14778/3659437.3659454}{Rapidash} \textbar{}
+\href{https://dl.acm.org/doi/10.14778/3717755.3717761}{Weever} \textbar{}
+\href{https://github.com/HPI-Information-Systems/Weever}{Weever Repo}
+
+Module này là lõi xử lý các denial constraints, tức các luật logic cần đối chiếu giữa nhiều bản ghi. Thay vì quét toàn bộ cặp bản ghi theo cách brute-force, WAVES kế thừa ý tưởng từ Rapidash: ánh xạ mỗi bản ghi thành một điểm trong không gian đa chiều, còn điều kiện vi phạm được biểu diễn như một vùng truy vấn. Nhờ đó, hệ thống có thể tìm vi phạm hiệu quả hơn bằng cấu trúc chỉ mục không gian như kd-tree.
+
+Tuy nhiên, nếu chỉ dùng Rapidash theo kiểu dữ liệu tĩnh, mỗi lần cửa sổ trượt đi hệ thống sẽ phải xây lại chỉ mục từ đầu, gây lãng phí lớn. Để khắc phục, WAVES bổ sung cơ chế incremental update từ Weever: khi có bản ghi mới đi vào hoặc bản ghi cũ rời khỏi cửa sổ, hệ thống chỉ cập nhật phần chênh lệch cần thiết thay vì tính lại toàn bộ. Cách kết hợp này giúp module vừa giữ được tốc độ dò lỗi, vừa phù hợp với bản chất thay đổi liên tục của dữ liệu luồng.
+
+\section{Module 2 -- Delay-aware mechanism}
+\noindent\textit{Nguồn tham chiếu:}
+\href{https://dl.acm.org/doi/10.14778/3476311.3476389}{Watermarks in Stream Processing Systems} \textbar{}
+\href{https://research.google.com/pubs/archive/43864.pdf}{The Dataflow Model}
+
+Khác với các engine phát hiện vi phạm truyền thống, WAVES không xem mọi thiếu hụt tức thời là lỗi. Trong môi trường streaming, dữ liệu có thể đến muộn hoặc sai thứ tự, nên nếu kết luận quá sớm, hệ thống rất dễ tạo ra false alerts. Vì vậy, WAVES bổ sung cơ chế nhận thức độ trễ dựa trên watermark. Cơ chế này hoạt động theo hai pha.
+
+Ở pha 1 -- Provisional verdict, nếu một luật có dấu hiệu bị vi phạm nhưng vẫn còn khả năng do late data, hệ thống chỉ tạo cảnh báo tạm thời.
+
+Ở pha 2 -- Final verdict, khi watermark đã đi qua mốc liên quan mà vi phạm vẫn còn tồn tại, hệ thống mới xác nhận đó là lỗi chính thức. Nhờ vậy, WAVES tách rõ giữa ``cảnh báo cần theo dõi'' và ``vi phạm đã xác nhận'', giúp giảm alert fatigue mà vẫn giữ được tính kịp thời của hệ thống.
+
+\section{Quality meta-stream}
+Đầu ra của WAVES không phải là sửa dữ liệu trực tiếp, mà là một luồng metadata song song. Mỗi sự kiện trong meta-stream có thể bao gồm: khoảng thời gian cửa sổ, định danh ràng buộc, tỷ lệ vi phạm, trạng thái cảnh báo và một số witness records để hỗ trợ điều tra nguyên nhân.
+
+\chapter{Thực nghiệm và đánh giá}
+
+\section{Môi trường và dữ liệu}
+\noindent\textit{Nguồn tham chiếu:}
+\href{https://arxiv.org/abs/2506.06147}{Stream DaQ} \textbar{}
+\href{https://github.com/pathwaycom/pathway}{Pathway}
+
+Bản thiết kế hiện tại giả định một kiến trúc stream processing tiêu chuẩn với Kafka hoặc broker tương đương ở lớp ingest. Lõi xử lý có thể được hiện thực bằng Python ở lớp orchestration, kết hợp engine hiệu năng cao ở lớp thấp hơn để tránh điểm nghẽn do runtime Python.
+
+Về dữ liệu, báo cáo có thể tiếp tục sử dụng bộ NYC Taxi Trip Duration như một nguồn thực nghiệm ban đầu vì dữ liệu này có đặc trưng phù hợp cho bài toán streaming, bao gồm event-time, out-of-order behavior và không gian để mô hình hóa các quy tắc nghiệp vụ.
+
+\section{Fault injection}
+\noindent\textit{Nguồn tham chiếu:}
+\href{https://openproceedings.org/2025/conf/edbt/paper-240.pdf}{Icewafl}
+
+Để đánh giá đúng bài toán delay-aware, chỉ chạy trên dữ liệu sạch là chưa đủ. Cần chủ động tạo ra các tình huống delayed tuples, lệch thứ tự và nhiễu theo thời gian. Icewafl phù hợp cho mục đích này vì cho phép cấu hình các temporal errors thay vì chỉ chèn null hay sửa format.
+
+\section{Các kịch bản kiểm thử}
+\begin{itemize}
+  \item Clean stream: đo chi phí vận hành cơ sở khi không có vi phạm.
+  \item Logic error without delay: đo khả năng phát hiện vi phạm logic khi dữ liệu đến đúng thứ tự.
+  \item Network delay / late arrivals: đo khả năng giảm false alerts khi dữ liệu đúng nhưng đến muộn.
+\end{itemize}
+
+\section{Chỉ số đo lường}
+Việc đánh giá nên được chia thành hai nhóm: hiệu năng hệ thống và chất lượng cảnh báo.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{|L{0.18\textwidth}|L{0.22\textwidth}|L{0.44\textwidth}|}
+    \hline
+    \textbf{Nhóm chỉ số} & \textbf{Chỉ số} & \textbf{Ý nghĩa} \\
+    \hline
+    Hiệu năng & Throughput & Số bản ghi hệ thống xử lý được mỗi giây \\
+    \hline
+    Hiệu năng & Processing latency & Thời gian xử lý trung bình cho mỗi cửa sổ \\
+    \hline
+    Hiệu năng & Memory footprint & Lượng trạng thái / bộ nhớ phải duy trì \\
+    \hline
+    Cảnh báo & False positive reduction rate & Mức giảm cảnh báo giả khi bật cơ chế delay-aware \\
+    \hline
+    Cảnh báo & Detection latency & Độ trễ từ lúc sự kiện xảy ra đến lúc ra final verdict \\
+    \hline
+  \end{tabular}
+  \caption{Nhóm chỉ số đánh giá đề xuất WAVES.}
+  \label{tab:metrics}
+\end{table}

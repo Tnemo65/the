@@ -1,0 +1,27 @@
+{
+  "csvPath": "data/test_index_update.csv",
+  "maxRows": -1,
+  "tIdSetType": "RoaringBitSet",
+  "measureMemory": true,
+  "parallel": false,
+  "runId": 0,
+  "experimentName": "",
+  "dbName": "",
+  "measureGranularity": 1000,
+  "types": [
+    "INTEGER",
+    "INTEGER"
+  ],
+  "keyColumns": [
+    0
+  ],
+  "constraints": [
+    [
+      {
+        "colIdx1": 0,
+        "colIdx2": 1,
+        "op": "GREATER"
+      }
+    ]
+  ]
+}

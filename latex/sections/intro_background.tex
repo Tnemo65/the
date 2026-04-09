@@ -1,0 +1,202 @@
+\chapter*{A Context-Aware Framework for Streaming Data Quality Monitoring}
+\addcontentsline{toc}{chapter}{A Context-Aware Framework for Streaming Data Quality Monitoring}
+
+\chapter{INTRODUCTION}
+
+\section{Nền tảng nghiên cứu và khoảng trống nghiên cứu}
+
+Tạm thời đặt tên dự án là \textbf{WAVES}.
+
+Để xây dựng WAVES theo hướng có cơ sở học thuật rõ ràng, phần này tổng hợp các công trình nền tảng liên quan trực tiếp đến giám sát DQ trên luồng, phát hiện denial constraints, xử lý late arrivals và benchmark bằng fault injection. Ở bản viết lại này, toàn bộ link được liệt kê đầy đủ ngay tại đây để tiện tra cứu.
+
+{\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{|L{0.29\textwidth}|L{0.20\textwidth}|L{0.37\textwidth}|}
+\hline
+\textbf{Tài liệu} & \textbf{Vai trò trong báo cáo} & \textbf{Link đầy đủ} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Tài liệu} & \textbf{Vai trò trong báo cáo} & \textbf{Link đầy đủ} \\
+\hline
+\endhead
+Stream DaQ: Stream-First Data Quality Monitoring & Khung stream-first và quality meta-stream & \tableurl{https://arxiv.org/abs/2506.06147} \\
+\hline
+Automating Data Quality Validation for Dynamic Data Ingestion & Nền tảng auto-validation / novelty detection & \tableurl{https://openproceedings.org/2021/conf/edbt/p79.pdf} \\
+\hline
+Rapidash: Efficient Detection of Constraint Violations & Động cơ phát hiện vi phạm logic hiệu quả & \tableurl{https://dl.acm.org/doi/10.14778/3659437.3659454} \\
+\hline
+Incremental Detection of Denial Constraint Violations (Weever) & Cập nhật gia tăng cho denial constraints & \tableurl{https://dl.acm.org/doi/10.14778/3717755.3717761} \\
+\hline
+Weever repository & Mã nguồn tham chiếu cho incremental detection & \tableurl{https://github.com/HPI-Information-Systems/Weever} \\
+\hline
+Probabilistic Management of Late Arrival of Events (ProbSlack) & Mô hình hóa độ trễ và thời gian chờ động & \tableurl{https://dl.acm.org/doi/10.1145/3210284.3210293} \\
+\hline
+Watermarks in Stream Processing Systems & Cơ sở lý thuyết watermark và event-time & \tableurl{https://dl.acm.org/doi/10.14778/3476311.3476389} \\
+\hline
+The Dataflow Model & Nền tảng tư duy event-time, completeness và triggers & \tableurl{https://research.google.com/pubs/archive/43864.pdf} \\
+\hline
+Icewafl: A Configurable Data Stream Polluter & Fault injection cho stream benchmarking & \tableurl{https://openproceedings.org/2025/conf/edbt/paper-240.pdf} \\
+\hline
+COD3: Non-blocking Functional Dependency Discovery from Data Streams & Ràng buộc FD không chặn trên dữ liệu luồng & \tableurl{https://www.sciencedirect.com/science/article/pii/S0020025524014452} \\
+\hline
+DAFDiscover: Robust Mining Algorithm for Dynamic Approximate Functional Dependencies & Hướng mở cho tự động khám phá luật & \tableurl{https://www.vldb.org/pvldb/vol17/p3484-wang.pdf} \\
+\hline
+Pathway & Framework runtime / xử lý luồng tham chiếu & \tableurl{https://github.com/pathwaycom/pathway} \\
+\hline
+Auto-Validate-by-History & Repo liên quan đến hướng auto DQ validation & \tableurl{https://github.com/microsoft/Auto-Validate-by-History} \\
+\hline
+\end{longtable}
+}
+
+\subsection*{Nhóm 1. Các hệ thống giám sát chất lượng dữ liệu luồng}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://arxiv.org/abs/2506.06147}{Stream DaQ} \,|\, \href{https://openproceedings.org/2021/conf/edbt/p79.pdf}{Automating Data Quality Validation for Dynamic Data Ingestion}
+
+Các công trình trong nhóm này cho thấy cộng đồng nghiên cứu đã bắt đầu chuyển từ tư duy ``đánh giá chất lượng sau khi dữ liệu đã ổn định'' sang tư duy ``giám sát chất lượng ngay trong lúc dữ liệu đang chảy''. Stream DaQ đại diện rõ nhất cho hướng stream-first: hệ thống tổ chức kiểm tra theo cửa sổ thời gian và liên tục phát ra quality meta-stream để các thành phần hạ nguồn nắm được sức khỏe của pipeline theo thời gian thực. Trong khi đó, hướng tự động hóa như Automating Data Quality Validation for Dynamic Data Ingestion tập trung vào việc học các đặc trưng thống kê từ lịch sử dữ liệu, sau đó dùng cơ chế novelty detection để phát hiện các batch bất thường mà không cần định nghĩa thủ công mọi luật kiểm tra.
+
+Điểm mạnh của nhóm này là khả năng thích nghi tốt với dữ liệu động và giảm phụ thuộc vào chuyên gia miền. Tuy nhiên, phần lõi của chúng vẫn thiên về kiểm tra thống kê, kiểm tra từng dòng hoặc các bất thường phân phối. Khi chuyển sang các ràng buộc logic đan chéo giữa nhiều bản ghi, chi phí xử lý tăng rất nhanh và khó duy trì thông lượng. Đó là lý do WAVES kế thừa tư duy tổ chức luồng của Stream DaQ nhưng không giữ nguyên lõi phát hiện vi phạm.
+
+\subsection*{Nhóm 2. Phát hiện vi phạm denial constraints}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://dl.acm.org/doi/10.14778/3659437.3659454}{Rapidash} \,|\, \href{https://dl.acm.org/doi/10.14778/3717755.3717761}{Weever} \,|\, \href{https://github.com/HPI-Information-Systems/Weever}{Weever Repo}
+
+Rapidash là một công trình rất quan trọng vì nó chỉ ra rằng bài toán phát hiện vi phạm denial constraints không nhất thiết phải xử lý bằng cách quét cặp bản ghi một cách thô bạo. Bằng cách ánh xạ dữ liệu sang không gian đa chiều và tận dụng cấu trúc tìm kiếm phạm vi trực giao, Rapidash giúp giảm đáng kể chi phí phát hiện vi phạm trên dữ liệu tĩnh. Trong khi đó, Weever bổ sung một góc nhìn khác: thay vì tính lại toàn bộ sau mỗi thay đổi, hệ thống chỉ cập nhật phần chênh lệch khi có insert hoặc delete, nhờ vậy phù hợp hơn với dữ liệu động.
+
+Tuy vậy, hai công trình này vẫn chưa giải quyết trọn vẹn bối cảnh streaming theo nghĩa event-time. Rapidash mạnh trên snapshot nhưng không sinh ra để chạy trên cửa sổ trượt liên tục. Weever lại mạnh ở incremental maintenance nhưng vẫn nhìn bài toán chủ yếu như cập nhật cơ sở dữ liệu, chưa xử lý trực tiếp câu chuyện watermark và late arrivals. Khoảng trống này mở ra hướng kết hợp: dùng Rapidash như lõi phát hiện vi phạm, dùng tư duy incremental của Weever để bảo trì trạng thái theo cửa sổ, và đặt chúng trong một lớp điều phối có nhận thức độ trễ.
+
+\subsection*{Nhóm 3. Nhận thức độ trễ, dữ liệu đến muộn và watermark}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://dl.acm.org/doi/10.1145/3210284.3210293}{ProbSlack} \,|\, \href{https://dl.acm.org/doi/10.14778/3476311.3476389}{Watermarks in Stream Processing Systems} \,|\, \href{https://research.google.com/pubs/archive/43864.pdf}{The Dataflow Model}
+
+Nếu chỉ nhìn dữ liệu như một chuỗi bản ghi đến theo đúng thứ tự, hệ thống rất dễ đưa ra kết luận sai trong môi trường thực. Các nghiên cứu như ProbSlack và Watermarks in Stream Processing Systems cho thấy độ trễ mạng, out-of-order arrivals và mức độ hoàn chỉnh theo event-time là những yếu tố cốt lõi trong thiết kế hệ thống stream processing. Dataflow Model cũng đặt nền tảng tư duy rằng tính đúng đắn theo event-time không thể tách rời khỏi cách hệ thống hiểu watermark, lateness và re-triggering.
+
+Đây chính là lý do báo cáo này không xem watermark như một chi tiết triển khai phụ, mà coi nó là thành phần trung tâm để ra quyết định cảnh báo. Trong đề xuất WAVES, khi một luật logic dường như bị vi phạm vì thiếu bản ghi đối chiếu, hệ thống không vội chốt lỗi ngay mà trước hết đánh dấu đó là phán quyết tạm thời. Chỉ sau khi watermark vượt qua ngưỡng liên quan mà vi phạm vẫn còn tồn tại, cảnh báo mới được nâng lên thành phán quyết cuối cùng.
+
+\subsection*{Khoảng trống nghiên cứu}
+
+Từ bốn nhóm tài liệu trên, có thể rút ra một khoảng trống khá rõ: hiện chưa có một khung giám sát DQ trên luồng nào đồng thời làm tốt ba việc sau trong cùng một kiến trúc:
+\begin{itemize}
+  \item duy trì tư duy stream-first và quality observability theo cửa sổ thời gian;
+  \item xử lý denial constraints đủ hiệu quả để chạy in-pipeline;
+  \item ra quyết định cảnh báo theo hướng delay-aware để giảm false alerts do late data.
+\end{itemize}
+
+\section{Bối cảnh nghiên cứu}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://arxiv.org/abs/2506.06147}{Stream DaQ} \,|\, \href{https://research.google.com/pubs/archive/43864.pdf}{The Dataflow Model}
+
+Trong các hệ thống phân tích hiện đại, dữ liệu không còn chỉ được nạp định kỳ theo lô rồi kiểm tra sau. Nó được đẩy liên tục từ broker, CDC pipelines, clickstreams, thiết bị biên, giao dịch vận hành và nhiều nguồn khác. Điều này kéo theo một thay đổi quan trọng: kiểm soát chất lượng dữ liệu cũng phải chuyển từ tư duy hậu kiểm sang tư duy giám sát liên tục.
+
+Khi dữ liệu luồng được dùng trực tiếp cho dashboard thời gian thực, phát hiện bất thường nghiệp vụ, hoặc mô hình học máy, một sai lệch nhỏ cũng có thể lan rất nhanh xuống các tầng hạ nguồn. Vì vậy, một hệ thống DQ trong bối cảnh streaming không chỉ cần phát hiện sai, mà còn phải phát hiện đủ sớm, đủ ổn định và đủ ít báo động giả để đội vận hành còn tin tưởng sử dụng.
+
+\section{Pain points}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://dl.acm.org/doi/10.14778/3659437.3659454}{Rapidash} \,|\, \href{https://dl.acm.org/doi/10.14778/3717755.3717761}{Weever} \,|\, \href{https://dl.acm.org/doi/10.14778/3476311.3476389}{Watermarks in Stream Processing Systems}
+
+Vấn đề đầu tiên nằm ở chi phí tính toán. Những kiểm tra đơn giản như null check, range check hay pattern check thường xử lý tốt trên từng bản ghi. Nhưng nhiều quy tắc dữ liệu thực tế không dừng ở đó. Chúng yêu cầu so sánh giữa nhiều dòng, nhiều thuộc tính, thậm chí nhiều ngữ cảnh trong cùng một cửa sổ thời gian. Khi số lượng bản ghi tăng, cách làm đối chiếu thô sẽ nhanh chóng trở thành điểm nghẽn về CPU và bộ nhớ.
+
+Vấn đề thứ hai là chất lượng cảnh báo. Trong thực tế, việc thiếu dữ liệu ở một thời điểm không đồng nghĩa với vi phạm logic. Dữ liệu có thể đang trên đường đến, bị chậm do mạng hoặc đến sai thứ tự theo processing time. Nếu hệ thống thiếu cơ chế nhận thức event-time và watermark, nó rất dễ xem sự thiếu hụt tạm thời này là lỗi thật. Kết quả là đội ngũ vận hành phải xử lý một lượng lớn cảnh báo rác, làm giảm niềm tin vào hệ thống.
+
+\section{Mục tiêu đề tài}
+
+Đề tài hướng tới xây dựng WAVES như một khung giám sát chất lượng dữ liệu luồng có nhận thức độ trễ. Mục tiêu không phải tạo ra thêm một bộ kiểm tra thống kê mới, mà là đề xuất một kiến trúc có thể kết nối ba lớp năng lực thường bị tách rời trong các nghiên cứu trước đây.
+
+\begin{itemize}
+  \item Xử lý denial constraints trực tiếp trên luồng với chi phí thấp hơn cách đối chiếu cặp bản ghi truyền thống.
+  \item Giảm false alerts bằng cơ chế phán quyết hai pha dựa trên watermark và event-time.
+  \item Xuất ra quality meta-stream để phục vụ quan sát liên tục cho pipeline và các thành phần hạ nguồn.
+\end{itemize}
+
+\section{Phạm vi và giới hạn}
+
+Báo cáo tập trung vào structured unbounded data streams có gắn nhãn thời gian sự kiện. Các luồng phi cấu trúc như văn bản tự do, hình ảnh hoặc âm thanh không nằm trong phạm vi chính.
+
+Về loại ràng buộc, trọng tâm là các vi phạm logic biểu diễn được dưới dạng denial constraints, đặc biệt là các luật liên quan đến so sánh giữa nhiều bản ghi trong cùng cửa sổ.
+
+Về độ trễ, đề xuất này dựa trên watermark mang tính heuristic. Vì vậy, các bản ghi đến quá muộn so với ngưỡng cấu hình có thể phải được xử lý theo luồng ngoại tuyến hoặc cơ chế bù riêng.
+
+\section{Đóng góp dự kiến}
+
+Nếu triển khai đúng hướng, WAVES có thể mang lại ba đóng góp đáng chú ý.
+
+\begin{itemize}
+  \item Một kiến trúc stream-first nhưng vẫn đủ chỗ cho denial constraints, thay vì chỉ dừng ở các phép đo thống kê.
+  \item Một cơ chế ra quyết định delay-aware giúp tách cảnh báo tạm thời khỏi cảnh báo cuối cùng, từ đó giảm false alerts do late data.
+  \item Một giao thức đánh giá minh bạch dựa trên fault injection để đo đồng thời hiệu năng và chất lượng cảnh báo.
+\end{itemize}
+
+\chapter{CƠ SỞ LÝ THUYẾT VÀ NGHIÊN CỨU LIÊN QUAN}
+
+\section{Xử lý dữ liệu luồng}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://research.google.com/pubs/archive/43864.pdf}{The Dataflow Model} \,|\, \href{https://dl.acm.org/doi/10.14778/3476311.3476389}{Watermarks in Stream Processing Systems}
+
+Khác với batch data có điểm đầu và điểm cuối rõ ràng, dữ liệu luồng là dòng sự kiện liên tục và về bản chất không bị chặn bởi kích thước cố định. Để tính toán được trên dạng dữ liệu này, hệ thống phải chia luồng thành các cửa sổ hữu hạn như tumbling window, sliding window hoặc session window.
+
+Một khái niệm không thể bỏ qua là sự khác nhau giữa event-time và processing-time. Event-time phản ánh thời điểm sự kiện thực sự xảy ra ngoài đời, còn processing-time phản ánh thời điểm hệ thống nhìn thấy sự kiện đó. Chênh lệch giữa hai mốc thời gian này chính là nguồn gốc của hiện tượng late data và out-of-order arrivals.
+
+\section{Giám sát chất lượng dữ liệu luồng}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://arxiv.org/abs/2506.06147}{Stream DaQ}
+
+Có thể nhìn tiến trình phát triển của DQ qua ba lớp. Lớp đầu là static DQ - kiểm tra một lần trên dữ liệu đã ổn định. Lớp thứ hai là incremental DQ - xem luồng dữ liệu như chuỗi các thay đổi nối tiếp nhau và cộng dồn trạng thái. Lớp thứ ba, cũng là lớp phù hợp nhất với bối cảnh hiện tại, là stream-first DQ - đặt việc giám sát vào ngay bên trong quá trình xử lý luồng.
+
+Điểm khác biệt quan trọng của stream-first DQ là chất lượng không được xem như một báo cáo hậu kiểm, mà như một luồng metadata sống song song với luồng dữ liệu gốc. Cách tiếp cận này phù hợp với mục tiêu observability và phản ứng nhanh trong pipeline hiện đại.
+
+\section{Denial constraints}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://dl.acm.org/doi/10.14778/3659437.3659454}{Rapidash}
+
+Denial constraints là một cách biểu diễn mạnh cho các quy tắc toàn vẹn dữ liệu, vì chúng có thể bao trùm nhiều loại phụ thuộc và quy tắc nghiệp vụ khác nhau. Nói ngắn gọn, một denial constraint phát biểu rằng không được tồn tại một tổ hợp bản ghi nào đồng thời thỏa mãn toàn bộ tập predicate dẫn tới trạng thái không hợp lệ.
+
+Thách thức ở đây nằm ở chi phí phát hiện vi phạm. Khi luật đòi hỏi so sánh giữa nhiều bản ghi, cách làm brute-force sẽ phình rất nhanh theo kích thước cửa sổ. Đó là lý do các công trình như Rapidash trở thành nền tảng quan trọng cho hướng nghiên cứu này.
+
+\section{Watermark}
+
+\noindent \textit{Nguồn tham chiếu: }
+\href{https://dl.acm.org/doi/10.14778/3476311.3476389}{Watermarks in Stream Processing Systems} \,|\, \href{https://research.google.com/pubs/archive/43864.pdf}{The Dataflow Model}
+
+Watermark có thể hiểu như một tuyên bố của hệ thống về mức độ đầy đủ theo event-time. Khi watermark đã đi qua một mốc thời gian nhất định, hệ thống tin rằng phần lớn hoặc toàn bộ dữ liệu liên quan đến mốc đó đã tới.
+
+Trong thực tế, watermark không phải chân lý tuyệt đối mà là một tín hiệu mang tính vận hành. Nếu cấu hình quá bảo thủ, hệ thống sẽ phản ứng chậm. Nếu cấu hình quá gắt, late data sẽ bị xem là lỗi hoặc bị loại bỏ quá sớm. Do đó, cách sử dụng watermark phải gắn chặt với chiến lược cảnh báo của hệ thống.
+
+\section{Tổng hợp các nghiên cứu liên quan}
+
+{\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{|L{0.16\textwidth}|L{0.20\textwidth}|L{0.26\textwidth}|L{0.24\textwidth}|}
+\hline
+\textbf{Dự án} & \textbf{Làm được gì} & \textbf{Chưa làm được gì} & \textbf{Ý nghĩa với đề tài} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Dự án} & \textbf{Làm được gì} & \textbf{Chưa làm được gì} & \textbf{Ý nghĩa với đề tài} \\
+\hline
+\endhead
+Stream DaQ & Khung stream-first, quality meta-stream, nhiều kiểm tra thống kê & Chưa xử lý sâu denial constraints và delay-aware alerts & Cung cấp runtime tư duy và cách tổ chức luồng \\
+\hline
+Rapidash & Phát hiện vi phạm logic hiệu quả trên dữ liệu tĩnh & Không sinh ra cho cửa sổ trượt streaming & Là lõi phát hiện vi phạm đề xuất \\
+\hline
+Weever & Bảo trì gia tăng cho denial constraints & Chưa gắn trực tiếp với event-time và watermark & Là ý tưởng duy trì trạng thái khi cửa sổ thay đổi \\
+\hline
+COD3 & Khám phá FD trên stream theo hướng non-blocking & Phạm vi hẹp hơn denial constraints & Gợi ý hướng mở cho rule discovery \\
+\hline
+Icewafl & Tiêm lỗi thời gian thực cho stream benchmark & Không phải framework giám sát DQ hoàn chỉnh & Là công cụ đánh giá delay-aware behavior \\
+\hline
+\end{longtable}
+}
+
+\section{Research gap}
+
+Điểm thiếu hiện nay không nằm ở chỗ thế giới chưa có hệ thống stream monitoring, cũng không nằm ở chỗ chưa có thuật toán phát hiện denial constraints. Vấn đề là hai hướng này đang phát triển khá rời nhau. Một bên mạnh về ngữ cảnh luồng, bên còn lại mạnh về logic ràng buộc; nhưng phần giao giữa hiệu năng, logic phức tạp và nhận thức độ trễ vẫn còn hở.
+
+WAVES vì thế được định vị như một kiến trúc kết nối: lấy tổ chức luồng làm vỏ, lấy phát hiện vi phạm logic làm lõi, và dùng watermark để làm lớp ra quyết định cảnh báo.

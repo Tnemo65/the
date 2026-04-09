@@ -1,0 +1,70 @@
+{
+  "csvPath": "data/test_uniform_distribution_2.csv",
+  "maxRows": -1,
+  "tIdSetType": "RoaringBitSet",
+  "measureMemory": true,
+  "parallel": false,
+  "runId": 0,
+  "experimentName": "",
+  "dbName": "",
+  "measureGranularity": 1000,
+  "types": [
+    "INTEGER",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER"
+  ],
+  "keyColumns": [
+    0
+  ],
+  "constraints": [
+    [
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 3,
+        "colIdx2": 3,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 4,
+        "colIdx2": 4,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 4,
+        "colIdx2": 4,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 5,
+        "colIdx2": 5,
+        "op": "EQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 3,
+        "colIdx2": 3,
+        "op": "EQUAL"
+      }
+    ]
+  ]
+}

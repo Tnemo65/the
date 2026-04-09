@@ -1,0 +1,39 @@
+{
+  "csvPath": "data/titlekind_id.csv",
+  "maxRows": 500000,
+  "tIdSetType": "RoaringBitSet",
+  "measureMemory": true,
+  "parallel": false,
+  "runId": 0,
+  "experimentName": "",
+  "dbName": "",
+  "measureGranularity": 1000,
+  "types": [
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "STRING"
+  ],
+  "keyColumns": [
+    0
+  ],
+  "constraints": [
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 3,
+        "colIdx2": 3,
+        "op": "UNEQUAL"
+      }
+    ]
+  ]
+}

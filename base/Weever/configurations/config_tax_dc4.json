@@ -1,0 +1,57 @@
+{
+  "csvPath": "/home/y/neu/IncrementalDCChecking/data/tax_random_0_id.csv",
+  "maxRows": 100000,
+  "tIdSetType": "RoaringBitSet",
+  "measureMemory": true,
+  "parallel": false,
+  "sortOrder": "selectivityOnly",
+  "inverseSorting": false,
+  "combinePrefix": true,
+  "storeViolations": true,
+  "runId": 0,
+  "experimentName": "",
+  "dbName": "",
+  "measureGranularity": 1000,
+  "batchSize": 1,
+  "types": [
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "FLOAT",
+    "FLOAT",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER"
+  ],
+  "keyColumns": [
+    0
+  ],
+  "constraints": [
+    [
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 11,
+        "colIdx2": 11,
+        "op": "GREATER"
+      },
+      {
+        "colIdx1": 12,
+        "colIdx2": 12,
+        "op": "LESS"
+      }
+    ]
+  ],
+  "predicateOrder": []
+}

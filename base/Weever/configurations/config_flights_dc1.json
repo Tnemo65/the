@@ -1,0 +1,52 @@
+{
+  "csvPath": "data/flights_random_0_id.csv",
+  "maxRows": 500000,
+  "tIdSetType": "RoaringBitSet",
+  "measureMemory": true,
+  "parallel": false,
+  "runId": 0,
+  "sortOrder": "selectivityOnly",
+  "inverseSorting": false,
+  "combinePrefix": false,
+  "storeViolations": true,
+  "experimentName": "sequential",
+  "dbName": "",
+  "measureGranularity": 1000,
+  "types": [
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER",
+    "FLOAT",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER"
+  ],
+  "keyColumns": [
+    0
+  ],
+  "constraints": [
+    [
+      {
+        "colIdx1": 1,
+        "colIdx2": 2,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 2,
+        "colIdx2": 1,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 8,
+        "colIdx2": 8,
+        "op": "UNEQUAL"
+      }
+    ]
+  ],
+  "predicateOrder": []
+}

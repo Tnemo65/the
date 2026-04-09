@@ -1,0 +1,121 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.dylib
+
+# C extensions
+*.c
+*.o
+*.o.d
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+.env
+.ruuv
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Virtual environments (all variants)
+.venv/
+venv/
+ENV/
+env/
+*.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+._*
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Data files (thesis-specific)
+*.csv
+*.parquet
+*.db
+*.sqlite
+
+# PDFs (generated)
+*.pdf
+!paper/*.pdf
+
+# Images (generated)
+*.png
+*.jpg
+!docs/**/*.png
+
+# Compiled docs
+__latex_cache__/
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# Build artifacts
+build/
+*.pyc
+*.pyo
+
+# Research/data
+research/**/*.csv
+research/**/*.json
+research/**/*.db
+
+# Specific thesis files to ignore
+*.docx
+!WAVES_rewrite_professional.docx
+*.bak
+*.backup
+*~
+
+# Local configs
+.local/
+*.local

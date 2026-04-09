@@ -1,0 +1,93 @@
+📄 TITLE
+🧠 ABSTRACT
+1. INTRODUCTION
+1.0.  Liệt kê toàn bộ các bài báo nghiên cứu thực tế, uy tín,  gần đây  xem họ thực sự làm gì, rào cản họ tự công nhận là gì, rào cản ta tự đánh giá thấy  là gì?
+1.1. Bối cảnh nghiên cứu
+
+(Sự lên ngôi của Streaming Data và vai trò của Data Quality thời gian thực)
+
+1.2. Thực trạng và Pain Points
+Nút thắt tính toán (O(N²))
+False Alerts do late data / network delay
+1.3. Mục tiêu đề tài
+
+(Xây dựng framework DQ in-pipeline, xử lý constraint phức tạp và delay)
+
+1.4. Phạm vi và Giới hạn
+1.5. Contribution Highlights
+1.6. Paper Organization
+2. BACKGROUND – PROBLEM FORMULATION – RELATED WORK
+2.1. Stream Processing
+
+(Windowing, Event-time vs Processing-time)
+
+2.2. Streaming Data Quality
+
+(Static vs Incremental vs Stream-first DQ)
+
+2.3. Logical Constraints / Denial Constraints
+2.4. Watermark
+2.5. Related Work (Streaming Data Quality)
+Các bài báo về streaming DQ
+Họ làm được gì
+Họ chưa làm được gì
+Đính kèm link paper
+2.6. Research Gap
+3. MODELLING – SOLUTION – PROPOSED METHOD
+3.1. High-level Architecture
+
+(Ingest → Windowing → Constraint Engine → Meta-stream)
+
+3.2. Base Framework
+
+(Stream DaQ / Pathway)
+
+3.3. Module 1 – Incremental Constraint Engine
+3.4. Module 2 – Delay-Aware Mechanism
+Two-phase verdict
+Watermark-based decision
+3.5. Quality Meta-stream
+4. EXPERIMENTS – EVALUATION
+4.1. Environment & Dataset
+4.2. Fault Injection (Data Stream Pollution)
+4.3. Test Scenarios
+Clean stream
+Logic error
+Network delay
+4.4. Metrics
+Performance (throughput, latency, memory)
+Effectiveness (false positive reduction rate)
+5. TECH STACK & ROADMAP
+5.1. Tech Stack
+
+(Python, Stream DaQ, Kafka/RabbitMQ)
+
+5.2. Roadmap / Milestones
+6. CONCLUSION
+REFERENCES
+
+Cách đánh chỉ mục bibentry: tMethodXX
+	- t: type of entry: 
+		○ j for journal
+		○ c for conference
+		○ b for book
+		○ m for others
+	- Method: abbreviation of paper method
+	- XX: published year (two last numbers)
+Samples: 
+	- cSDAID22  for : H. V. Vo, H. N. Nguyen, T. N. Nguyen, and H. P. Du, “SDAID: Towards a hybrid signature and deep analysis-based intrusion detection method,” in GLOBECOM 2022 - 2022 IEEE Global Communications Conference, 2022, pp. 2615–2620.
+    jSAID23 for : H. V. Vo, H. P. Du, and H. N. Nguyen, “Ai-powered intrusion detection in large-scale traffic networks based on flow sensing strategy and parallel deep analysis,” Journal of Network and Computer Applications, vol. 220, p. 103735, 2023.
+
+
+Processes
+	1. Identify challenges, research gaps
+	2. Problem Formulation & Related Work
+	3. Modelling & Solution
+	4. Experiment Design & Running & Summary
+	5. Analysis - Evaluation - Comparison
+	6. Introduction & Conclusion
+	7. Abstract
+        8. Finalizing
+
+
+https://www.sciencedirect.com/        

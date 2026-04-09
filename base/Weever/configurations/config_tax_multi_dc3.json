@@ -1,0 +1,139 @@
+{
+  "csvPath": "data/tax_random_0_id.csv",
+  "maxRows": 200000,
+  "tIdSetType": "RoaringBitSet",
+  "measureMemory": true,
+  "parallel": false,
+  "runId": 0,
+  "sortOrder": "selectivityOnly",
+  "inverseSorting": false,
+  "combinePrefix": true,
+  "experimentName": "",
+  "dbName": "",
+  "measureGranularity": 1000,
+  "types": [
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "STRING",
+    "INTEGER",
+    "STRING",
+    "STRING",
+    "FLOAT",
+    "FLOAT",
+    "INTEGER",
+    "INTEGER",
+    "INTEGER"
+  ],
+  "keyColumns": [
+    0
+  ],
+  "constraints": [
+    [
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 10,
+        "colIdx2": 10,
+        "op": "EQUAL"
+      },
+      {
+      "colIdx1": 13,
+      "colIdx2": 13,
+      "op": "UNEQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 10,
+        "colIdx2": 10,
+        "op": "EQUAL"
+      },
+      {
+      "colIdx1": 14,
+      "colIdx2": 14,
+      "op": "UNEQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 10,
+        "colIdx2": 10,
+        "op": "EQUAL"
+      },
+      {
+      "colIdx1": 15,
+      "colIdx2": 15,
+      "op": "UNEQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 10,
+        "colIdx2": 10,
+        "op": "EQUAL"
+      },
+      {
+      "colIdx1": 3,
+      "colIdx2": 3,
+      "op": "UNEQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 10,
+        "colIdx2": 10,
+        "op": "EQUAL"
+      },
+      {
+      "colIdx1": 9,
+      "colIdx2": 9,
+      "op": "UNEQUAL"
+      }
+    ],
+    [
+      {
+        "colIdx1": 7,
+        "colIdx2": 7,
+        "op": "EQUAL"
+      },
+      {
+        "colIdx1": 9,
+        "colIdx2": 9,
+        "op": "EQUAL"
+      },
+      {
+      "colIdx1": 14,
+      "colIdx2": 14,
+      "op": "UNEQUAL"
+      }
+    ]
+  ]
+}
