@@ -6,16 +6,23 @@
 
 ## Changelog
 
-### 2026-04-12 — Phase 2.6: Rapidash
+### 2026-04-12 — Phase 2.10/2.11b: LateHandler + EventStore
 
 **Trạng thái:** Hoàn thành
 
 **Thay đổi:**
-- `waves/rapidash/candidate.py` — CandidateViolation, BatchedTraversalResult
-- `waves/rapidash/kdtree.py` — KDTreeNode, bulk_load, range_query, _argmax_range, _boxes_intersect (DEFAULT_LEAF_SIZE=16)
-- `waves/rapidash/traversal.py` — Intersects, point_in_box, traverse_node, BatchedTraversal
-- `waves/rapidash/__init__.py` — Export all 9 symbols (added bulk_load, range_query)
-- `tests/unit/test_rapidash.py` — 60 unit tests, 60/60 pass
+
+- `waves/store/event_store.py` — EventStore (event_id→DataEvent, pane_id, window_id), put/get/get_pane_id/get_window_id/has/count/clear
+- `waves/store/__init__.py` — Export EventStore
+- `waves/late_handler/handler.py` — LateHandlerConfig (wait_for_late_seconds, window_config), handle_late_event (5-step: threshold check → find alerts → retract → pane_insert → re-check), late_event_invalidate_check (DC predicate evaluation for s-side matched_event, t-side late_event), _parse_window_end, _extract_point, _evaluate_predicate
+- `waves/late_handler/__init__.py` — Export LateHandlerConfig, handle_late_event, late_event_invalidate_check
+- `tests/unit/test_store.py` — 16 tests
+- `tests/unit/test_late_handler.py` — 30 tests
+
+**Bug fix trong quá trình implement:**
+- `late_event_invalidate_check`: đảo đúng logic `right_source = late_event if right_side == "t" else matched_event` — trước đó luôn lấy matched_event cho cả hai vế
+- `Predicate.operator` (không phải `predicate_type`)
+- `traverse_node` trả về tuple `(candidates, visited, pruned)`, không phải object
 
 **Modules đã implement:**
 - 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
@@ -24,13 +31,47 @@
 - 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, unit tests 35/35 pass)
 - 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
 - 2.6 rapidash ✅ (kdtree: KDTreeNode/bulk_load/range_query; traversal: BatchedTraversal/traverse_node/Intersects/point_in_box; candidate: CandidateViolation/BatchedTraversalResult; unit tests 60/60 pass)
-- 2.7 weever (placeholder)
-- 2.8 decision (placeholder)
-- 2.9 tombstone (placeholder)
-- 2.10 late_handler (placeholder)
+- 2.7 weever ✅ (PaneForest: pane_insert/pane_close/window_slide; unit tests 25/25 pass)
+- 2.8 decision ✅ (AlertStateStore: put/get/delete/retract/indexes; process_candidate/finalize_window/retract_alert/cleanup_expired; unit tests 35/35 pass)
+- 2.9 tombstone ✅ (TombstoneFilter/TombstoneManager: create/drop/add/contains; unit tests 13/13 pass)
+- 2.10 late_handler ✅ (handle_late_event: 5-step late event flow; late_event_invalidate_check; unit tests 30/30 pass)
 - 2.11 output (placeholder)
-- 2.11b store (placeholder)
+- 2.11b store ✅ (EventStore: event_id→DataEvent/pane_id/window_id; unit tests 16/16 pass)
 - 2.11c pipeline (placeholder)
+
+**Tổng test: 333/333 pass**
+
+**Scripts thực tế:**
+- scripts/prepare_benchmark.py (placeholder)
+- scripts/inject_fraud.py (placeholder)
+
+---
+
+### 2026-04-12 — Phase 2.7/2.8/2.9: Weever + Decision + Tombstone
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+- `waves/tombstone/filter.py` — TombstoneFilter (O(1) per-pane filter), TombstoneManager (pane lifecycle: create/drop, retraction: add/contains)
+- `waves/tombstone/__init__.py` — Export TombstoneFilter, TombstoneManager
+- `waves/weever/pane_forest.py` — PaneForest (flat list + O(1) lookup), pane_insert, pane_close (bulk_load), window_slide (close+drop expired panes), find_or_create_pane, get_roots
+- `waves/weever/__init__.py` — Export PaneForest, _floor_ts
+- `waves/decision/alert_store.py` — AlertStateStore (KV store with window/event indexes), AlertStatus (PROVISIONAL/FINAL/RETRACTED), AlertRecord
+- `waves/decision/decision.py` — ProvisionalDecision, FinalDecision, RetractionDecision, process_candidate (idempotent), finalize_window (watermark seal), retract_alert (tombstones events), cleanup_expired (TTL)
+- `waves/decision/__init__.py` — Export all 12 symbols
+- `tests/unit/test_tombstone.py` — 13 tests
+- `tests/unit/test_weever.py` — 25 tests
+- `tests/unit/test_decision.py` — 35 tests
+
+**Tổng test khi đó: 241/241 pass**
+
+**Modules đã implement:**
+- 2.1–2.5 ✅ (các phase trước)
+- 2.6 rapidash ✅ (hoàn thành phase trước)
+- 2.7 weever ✅ (PaneForest: pane_insert/pane_close/window_slide; unit tests 25/25 pass)
+- 2.8 decision ✅ (AlertStateStore: put/get/delete/retract/indexes; process_candidate/finalize_window/retract_alert/cleanup_expired; unit tests 35/35 pass)
+- 2.9 tombstone ✅ (TombstoneFilter/TombstoneManager: create/drop/add/contains; unit tests 13/13 pass)
+- 2.10–2.11c (placeholder — hoàn thành ở phase sau)
 
 **Scripts thực tế:**
 - scripts/prepare_benchmark.py (placeholder)
@@ -49,20 +90,7 @@
 - `waves/optimizer/__init__.py` — Export all 11 symbols
 - `tests/unit/test_optimizer.py` — 44 unit tests, 44/44 pass
 
-**Modules đã implement:**
-- 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
-- 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
-- 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
-- 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, unit tests 35/35 pass)
-- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
-- 2.6 rapidash (placeholder)
-- 2.7 weever (placeholder)
-- 2.8 decision (placeholder)
-- 2.9 tombstone (placeholder)
-- 2.10 late_handler (placeholder)
-- 2.11 output (placeholder)
-- 2.11b store (placeholder)
-- 2.11c pipeline (placeholder)
+**Tổng test khi đó: 147/147 pass**
 
 **Scripts thực tế:**
 - scripts/prepare_benchmark.py (placeholder)
@@ -183,15 +211,15 @@
 - [x] 2.3 BasicDQChecks
 - [x] 2.4 LogicalEngine
 - [x] 2.5 SharedRuleOptimizer
-- [ ] 2.6 Rapidash
-- [ ] 2.7 Weever
-- [ ] 2.8 Watermark/Decision
-- [ ] 2.9 Tombstone
-- [ ] 2.10 LateHandler
+- [x] 2.6 Rapidash
+- [x] 2.7 Weever
+- [x] 2.8 Watermark/Decision
+- [x] 2.9 Tombstone
+- [x] 2.10 LateHandler
 - [ ] 2.11 AlertOutput
-- [ ] 2.11b EventStore
+- [x] 2.11b EventStore
 - [ ] 2.11c Pipeline
-- [ ] 2.12 Unit tests per module
+- [x] 2.12 Unit tests per module (333 tests, 333/333 pass)
 - [ ] 2.13 Integration tests
 
 ### Phase 3: Dữ liệu
