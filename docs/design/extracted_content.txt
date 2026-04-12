@@ -1,0 +1,977 @@
+================================================================================
+FILE: system_architecture.docx
+================================================================================
+SYSTEM ARCHITECTURE DOCUMENT
+WAVES - Stream DaQ + Rapidash + Weever + Watermark
+Tài liệu này chuẩn hóa phần kiến trúc cho hệ thống phát hiện logical data quality violations trên data stream, bám đúng sườn yêu cầu và không mở rộng ngoài phạm vi kiến trúc.
+2.1. Kiến trúc tổng thể hệ thống
+Hệ thống được tổ chức theo pipeline xử lý luồng: nhận dữ liệu, quản lý window, chạy basic checks, điều phối kiểm tra logic, tăng tốc tìm vi phạm, cập nhật incremental theo window trượt, ra quyết định delay-aware và phát ra alert / quality meta-stream.
+Hình 2.1. Kiến trúc tổng thể của pipeline WAVES
+2.2. Mô tả từng block
+Bảng dưới đây mô tả 8 block bắt buộc theo các tiêu chí: chức năng, input, output, state và phụ thuộc.
+Mở rộng kỹ thuật cho Block 4 và Block 6
+Hai block dưới đây là nơi kiến trúc WAVES khác biệt rõ nhất so với mô hình Stream DaQ gốc.
+2.3. Vai trò trọng tâm của các thành phần
+Bốn thành phần dưới đây là trọng tâm của kiến trúc: Stream DaQ giữ vai trò nền pipeline, Rapidash xử lý tăng tốc logical search, Weever đảm bảo incremental maintenance khi window trượt, và Watermark chịu trách nhiệm delay-aware decision để giảm false alert.
+
+[TABLE 1]
+Phạm vi tài liệu: 2.1 Kiến trúc tổng thể hệ thống, 2.2 Mô tả từng block, 2.3 Vai trò trọng tâm của các thành phần.
+
+
+[TABLE 2]
+Dữ liệu đi từ source -> ingestion -> window manager -> basic DQ checks -> logical violation engine -> Rapidash (Batched Traversal Processor) + Weever -> watermark / decision layer -> alert / meta-stream output.
+Block giữ state chính: Window manager, Basic DQ checks, Weever incremental maintenance, Watermark / decision layer; Logical violation engine giữ ngữ cảnh thống kê ở mức EMA / rule plan.
+Block xử lý logic chính: Logical violation engine và Rapidash layer.
+
+
+[TABLE 3]
+Block | Chức năng | Input | Output | State | Phụ thuộc
+Stream input / ingestion | Nhận dữ liệu đầu vào, giải mã định dạng, chuẩn hóa record và đưa vào pipeline. | Raw stream events | DataEvent đã chuẩn hóa | Không | Nguồn dữ liệu
+Window manager | Quản lý window; xác định record vào và ra khi cửa sổ trượt. | DataEvent đã chuẩn hóa | Windowed events / delta | Có - buffer cửa sổ | Stream input / ingestion
+Basic DQ checks của Stream DaQ | Chạy null, range, type, freshness và thống kê cơ bản trước phần logic phức tạp. | Windowed events | Basic metrics + clean events | Có - thống kê cửa sổ | Window manager
+Logical violation engine
+(Bộ điều phối Lõi & Ngữ cảnh) | Điều phối rule logic, giữ ngữ cảnh thống kê và sinh elastic bounding boxes bằng EMA; gom luật cùng không gian để batch query. | Luồng dữ liệu trong pipeline + tập luật tĩnh | Elastic / batched query boxes | Có - EMA context + rule plan | Basic DQ checks; rule set
+Rapidash layer (Batched Traversal Processor) | Tìm vùng có khả năng vi phạm bằng range search / kd-tree và duyệt lô đa luật (Batched Traversal / Box Dropping); tránh brute-force. | Query requests | Candidate violations | Không | Logical violation engine; Weever
+Weever incremental maintenance
+(Lớp duy trì Cấu trúc) | Duy trì pane-based forest; chia window thành panes và drop pane cũ O(1) thay vì xóa từng điểm khỏi một cây động. | Lệnh trượt cửa sổ + dữ liệu mới | List KD-Tree cân bằng | Có - pane-based forest | Window manager
+Watermark / decision layer | Phân biệt alert tạm thời và alert cuối; hỗ trợ retract khi late data đến. | Candidate violations + watermark | Provisional / final / retract | Có - trạng thái quyết định | Rapidash layer
+Alert / meta-stream output | Xuất quality meta-stream và violation alerts ra sink hoặc downstream system. | Basic metrics + quyết định cuối | Quality meta-stream / alerts | Không | Basic DQ checks; Watermark
+
+
+[TABLE 4]
+Block 4. Logical Violation Engine (Bộ điều phối Lõi & Ngữ cảnh)
+Chức năng chi tiết: Không chỉ dịch denial constraints từ text sang cấu trúc truy vấn. Block này thực hiện cơ chế tách rời dữ liệu và ngữ nghĩa (decoupling), trong đó Statistical Context Engine liên tục lấy mẫu các tín hiệu như vận tốc và thời gian để ước lượng phương sai σ bằng Exponential Moving Average (EMA). Từ σ, hệ thống sinh Elastic Bounding Boxes: giao thông hỗn loạn thì hộp nới rộng, giao thông ổn định thì hộp tự thu hẹp. Đồng thời, Shared Rule Optimizer gom các luật có chung không gian và sinh các hộp truy vấn dùng chung để tra cứu một lần.
+Input: Luồng dữ liệu trong pipeline và tập luật tĩnh.
+Output: Danh sách các Elastic / Batched Query Boxes đã được co giãn và gom lô.
+State: Có giới hạn - giữ statistical context (EMA, σ) và kế hoạch gom nhóm luật dùng chung.
+
+
+[TABLE 5]
+Block 6. Weever Incremental Maintenance (Lớp duy trì Cấu trúc)
+Chức năng chi tiết: Giải bài toán khó nhất của cấu trúc hình học trong streaming là deletion. Thay vì tìm và xóa từng lá khỏi KD-Tree với chi phí O(log N) rồi làm cây mất cân bằng, Weever dùng kiến trúc Pane-based Forest: cửa sổ lớn được chia thành nhiều panes nhỏ (ví dụ 2 phút), mỗi pane được bulk-load thành một KD-Tree tĩnh cân bằng. Khi window trượt, hệ thống chỉ Drop toàn bộ pane cũ nhất khỏi bộ nhớ với chi phí O(1), sau đó gắn pane mới vào danh sách cây đang hoạt động.
+Input: Lệnh trượt cửa sổ và dữ liệu mới.
+Output: Một tập hợp / List các KD-Tree luôn sẵn sàng cho Rapidash và tối ưu về mặt cân bằng.
+State: Có - duy trì Pane-based Forest thay cho một cây động đơn lẻ.
+
+
+[TABLE 6]
+Stream DaQ
+Giữ vai trò nền windowing của toàn hệ thống.
+Chạy basic checks trước phần logic phức tạp.
+Tạo quality meta-stream cho từng window. | Rapidash
+Tăng tốc tìm vùng có khả năng vi phạm.
+Tránh brute-force toàn bộ cặp bản ghi.
+Đóng vai trò lõi ở phần logical search.
+Weever
+Cập nhật incremental khi window thay đổi.
+Chỉ xử lý phần delta vào-ra của cửa sổ.
+Tránh rebuild toàn bộ cấu trúc dữ liệu. | Watermark
+Tránh chốt lỗi quá sớm khi dữ liệu đến muộn.
+Phân biệt alert tạm thời và alert cuối.
+Cho phép retract để giảm false alert.
+
+
+[TABLE 7]
+Kết luận kiến trúc: Stream DaQ lo windowing và basic checks; Rapidash + Weever giải bài toán logical violation trên cửa sổ trượt; Watermark quyết định thời điểm chốt cảnh báo; đầu ra cuối là alert stream và quality meta-stream.
+
+
+
+================================================================================
+FILE: module_specification.docx
+================================================================================
+CHƯƠNG 5
+ĐẶC TẢ MODULE KỸ THUẬT
+(Module Specification)
+────────────────────────
+Kiến trúc WAVES
+Tài liệu đặc tả chi tiết cho 4 module lõi: StreamDaQ, Rapidash, Weever và Watermark / Alert Decision.
+5.1. Window / StreamDaQ module
+5.2. Rapidash module
+5.3. Weever module (Module Duy trì Cấu trúc Pane-based)
+5.4. Watermark / Alert decision module
+5.5. Statistical Context & Elastic Box module
+5.6. Shared Rule Optimizer module
+
+[TABLE 1]
+Phạm vi | Chỉ mô tả đúng 4 module theo sườn yêu cầu, không mở rộng sang phần ngoài phạm vi.
+Mức độ | Low-level design / technical blueprint phục vụ lập trình và hiện thực hệ thống.
+Nguyên tắc | Kết hợp nội dung từ khung gốc và Report, nhưng chỉ giữ các ý phục vụ trực tiếp cho đặc tả module.
+
+
+[TABLE 2]
+Mục tiêu module | Nhận input event, tổ chức dữ liệu theo window thời gian, chạy các basic checks và chuyển phần dữ liệu hợp lệ sang tầng kiểm tra logic.
+Input event | Luồng sự kiện thô dạng JSON/Avro (hoặc record tương đương), kèm ít nhất hai mốc thời gian:
+• EventTime: thời điểm sự kiện thực sự phát sinh.
+• IngestionTime: thời điểm hệ thống tiếp nhận.
+Mỗi event cần mang khóa định danh và các thuộc tính nghiệp vụ phục vụ kiểm tra ở các module sau.
+Cách tạo window | Sử dụng Sliding Window dựa trên EventTime.
+• Mỗi event được gán vào một hoặc nhiều window theo kích thước cửa sổ và bước trượt đã cấu hình.
+• Windowing được dùng để giữ ngữ cảnh gần thời điểm phát sinh lỗi, thay vì gom toàn bộ luồng thành batch lớn.
+Basic checks chạy ở đây | Chỉ thực hiện các kiểm tra đơn bản ghi, chi phí thấp:
+• Completeness: null/missing field.
+• Validity: kiểm tra kiểu dữ liệu, format, regex.
+• Range: min/max hoặc miền giá trị hợp lệ cho từng thuộc tính.
+Các check phức tạp phải đối chiếu nhiều bản ghi sẽ không xử lý ở đây.
+State của module | • Window Buffer: giữ các bản ghi thuộc những window đang mở.
+• Aggregate Accumulators: các bộ đếm / tổng / thống kê cơ bản để phát ra quality meta-stream.
+• Metadata thực thi: cấu hình window, checkpoint tiến độ, và thông tin backpressure nếu có.
+Output sang module sau | • Valid Data Events: các bản ghi vượt qua kiểm tra cơ bản, được chuyển sang Rapidash/Weever.
+• Basic Quality Meta-stream: thống kê chất lượng cơ bản của từng window để phục vụ giám sát hệ thống.
+Trigger chạy | Kích hoạt xử lý ngay khi event đến. Ngoài trigger theo sự kiện, module cũng cần trigger theo mốc thời gian/window boundary để phát kết quả tổng hợp của từng window.
+Edge cases chính | • Malformed record / JSON hỏng: loại bỏ khỏi luồng xử lý chính, ghi log hoặc đẩy vào dead-letter queue.
+• Spike/Burst traffic: kích hoạt backpressure hoặc cơ chế giới hạn tài nguyên để tránh quá tải RAM.
+• Event đến trễ / sai thứ tự: vẫn gán window theo EventTime, còn quyết định chốt alert sẽ do Watermark module xử lý.
+
+
+[TABLE 3]
+Mục tiêu module | Tìm candidate violations nhanh trên dữ liệu trong window bằng cách biến bài toán dò vi phạm logic thành truy vấn không gian thay cho so sánh cặp bản ghi theo kiểu O(N²).
+Input là gì | • Bản ghi mới hoặc tập bản ghi đã qua basic checks từ StreamDaQ.
+• Danh sách Denial Constraints (DCs) hoặc các logical violation rules cần kiểm tra.
+• Cấu trúc chỉ mục hiện thời do Weever duy trì.
+KD-tree dùng cho loại query nào | KD-tree được dùng cho Orthogonal Range Query (truy vấn vùng trực giao / bounding-box query) đối với các luật có thành phần bất phương trình. Không gian truy vấn được tạo bằng cách ánh xạ các thuộc tính số hoặc thuộc tính có thể so sánh thành các chiều của cây.
+Violation pattern nào được support | • Equality predicates: xử lý bằng hash partition / hash table để gom các bản ghi thuộc cùng nhóm so sánh.
+• Inequality predicates (<, >, ≤, ≥): ánh xạ thành các chiều của KD-tree để cắt tỉa vùng tìm kiếm.
+• Các denial constraints kết hợp nhiều điều kiện bằng nhau và bất phương trình đều có thể hỗ trợ nếu biểu diễn được thành truy vấn phạm vi.
+Output candidate violations | Đầu ra là danh sách Candidate Violations, thường ở dạng cặp hoặc tập nhỏ bản ghi có khả năng xung đột logic, ví dụ (R_new, R_history) cùng với rule ID / window ID / thông tin giải thích ngắn.
+State của module | Về mặt thiết kế, Rapidash nên được xem là stateless: module chủ yếu thực hiện thuật toán truy vấn và không sở hữu lâu dài cấu trúc dữ liệu nặng. Nó sử dụng chỉ mục hiện có do Weever cập nhật để trả kết quả.
+Assumptions / giới hạn | • Các thuộc tính tham gia vào điều kiện bất phương trình phải là numeric hoặc comparable.
+• Hiệu quả của KD-tree giảm khi số chiều quá cao (curse of dimensionality), nên các luật có quá nhiều điều kiện bất phương trình sẽ kém lợi thế hơn.
+• Rapidash chỉ trả candidate violations; bước quyết định cuối cùng và xử lý dữ liệu đến muộn nằm ở module Watermark / Alert Decision.
+
+
+[TABLE 4]
+Mục tiêu module | Quản lý vòng đời của bộ nhớ không gian (Spatial Index) theo kiến trúc Rừng cây cắt lát (Pane-based Forest), đảm bảo tốc độ cập nhật O(1) khi cửa sổ trượt.
+Khi Insert (Thêm mới) thì làm gì | Bản ghi mới luôn được nạp (Insert) vào KD-Tree của Lát cắt (Pane) hiện hành (Active Pane). Thuật toán chèn vào như một Nút Lá mới.
+Khi Delete (Cửa sổ trượt) thì làm gì | TUYỆT ĐỐI KHÔNG đi vào cây tìm và xóa từng lá (tránh làm mất cân bằng). Thay vào đó, Weever xác định Lát cắt (Pane) cũ nhất đã hết hạn và thực hiện lệnh DROP (Hủy cấp phát bộ nhớ toàn bộ TreePane đó).
+Update tree / index như thế nào | Cập nhật mang tính "Tăng cường theo Lô" (Pane-incremental).
+Có rebuild toàn bộ hay không | Không rebuild lại các Pane đã đóng băng. Chỉ xây dựng (Bulk-load) khi khởi tạo một Pane mới.
+State của module | Mảng (Array/List) chứa các đối tượng TreePane đang hoạt động trong cửa sổ.
+Output của module | Trạng thái pane-based forest sẵn sàng cho Rapidash truy vấn; tín hiệu đồng bộ insert-complete / pane-ready tùy kiến trúc triển khai.
+
+
+[TABLE 5]
+Mục tiêu module | Quản lý pending violations và đưa ra quyết định alert cuối cùng trong điều kiện dữ liệu có thể đến trễ hoặc sai thứ tự, nhằm giảm false alert.
+Pending violation lưu ở đâu | Lưu trong Alert State Store theo mô hình key-value (in-memory state store hoặc RocksDB tùy kiến trúc triển khai). Khóa thường gồm window ID, rule ID, entity ID hoặc alert ID; giá trị là danh sách candidate violations và trạng thái hiện tại của chúng.
+Điều kiện tạo provisional alert | Tạo provisional alert ngay khi Rapidash phát hiện candidate violation đủ điều kiện để nghi ngờ vi phạm ở thời điểm hiện tại. Alert này chưa phải kết luận cuối vì hệ thống vẫn chờ khả năng xuất hiện dữ liệu đến muộn.
+Điều kiện final hóa | Final alert khi watermark của hệ thống đã vượt qua mốc: window_end + wait_for_late. Tại thời điểm đó, hệ thống coi window đã đủ hoàn chỉnh; mọi provisional alert chưa bị bác bỏ sẽ được nâng lên trạng thái chính thức.
+Điều kiện hủy alert tạm | Hủy provisional alert khi late data hoặc out-of-order data đến sau nhưng cung cấp đủ ngữ cảnh để chứng minh rằng cảnh báo tạm trước đó là sai. Khi đó hệ thống phát retraction alert hoặc cập nhật trạng thái alert về cancelled.
+State của module | • Alert State Store: lưu candidate violations, provisional alerts và lịch sử quyết định chưa chốt.
+• Watermark Clock: theo dõi mốc thời gian an toàn của toàn pipeline.
+• Cleanup metadata: TTL, trạng thái finalization, và con trỏ đến window/rule liên quan.
+Output của module | Phát ra ba loại sự kiện chính:
+• Provisional Alert.
+• Retraction Alert.
+• Final Alert.
+Các output này là đầu ra cuối cho tầng giám sát/cảnh báo của hệ thống.
+Cleanup state như thế nào | Sau khi finalization hoàn tất và đã phát alert cuối hoặc lệnh hủy cuối, module xóa các entry tương ứng khỏi Alert State Store để giải phóng bộ nhớ. Việc cleanup cần bám theo watermark và TTL để tránh vừa xóa quá sớm vừa gây memory leak.
+
+
+[TABLE 6]
+Mục tiêu module | Cung cấp khả năng tự thích nghi (self-adaptive) cho hệ thống trước hiện tượng concept drift. Module này biến các luật Denial Constraint (DC) vốn có ngưỡng tĩnh thành các đối tượng hình học động (Elastic Bounding Box), để Rapidash luôn truy vấn theo bối cảnh thống kê hiện tại thay vì dùng một ngưỡng cố định từ đầu đến cuối.
+Input | • Luồng tham số liên tục được trích ra từ event stream, ví dụ: vận tốc, thời gian di chuyển, quãng đường, độ lệch GPS hoặc các biến ngữ cảnh mà luật DC phụ thuộc.
+• Bộ luật DC gốc ở dạng static bounds / static predicates.
+• Cấu hình học máy nhẹ của module: α (hệ số EMA), k (độ nới lỏng), Δ_min, Δ_max và danh sách feature nào được dùng để tính context cho từng luật.
+Cách hoạt động (Logic lõi) | Module duy trì thống kê online rất nhẹ cho từng feature hoặc từng nhóm feature mà luật cần dùng.
+• Bước 1 - cập nhật trung bình động: khi giá trị mới X_t đến, cập nhật μ_t bằng EMA trên luồng hiện tại.
+• Bước 2 - cập nhật phương sai động: σ_t² = (1 − α) · σ_(t−1)² + α · (X_t − μ_(t−1))².
+• Bước 3 - lấy độ lệch chuẩn hiện thời: σ_t = sqrt(max(σ_t², 0)).
+• Bước 4 - tính độ nới lỏng: Δ_t = k · σ_t, sau đó clamp vào miền an toàn: Δ_t = min(max(Δ_t, Δ_min), Δ_max).
+• Bước 5 - sinh ElasticBoundingBox: cộng hoặc trừ Δ_t vào các bound của luật DC gốc. Ví dụ nếu luật gốc yêu cầu |travel_time_A − travel_time_B| ≤ B, thì luật động sẽ dùng B' = B + Δ_t. Với ràng buộc lower/upper bound, module nới theo đúng chiều của từng predicate để không làm sai semantics của luật.
+• Bước 6 - đóng gói kết quả: xuất ra cấu trúc ElasticBoundingBox gồm {rule_id, dimensions, effective_bounds, timestamp_context, μ, σ, Δ} để Rapidash dùng trực tiếp ở pha range search.
+Gợi ý triển khai cho Dev:
+• Nên giữ state theo key = (rule_group, feature_name) hoặc key = (partition_key, rule_id, feature_name) nếu cần context riêng cho từng nhóm như VehicleType.
+• Thứ tự xử lý an toàn là: cập nhật state thống kê xong mới materialize box cho các event hoặc window kế tiếp, tránh việc một event tự làm thay đổi box rồi ngay lập tức tự đánh giá chính nó bằng trạng thái chưa ổn định.
+• Có thể cấu hình warm-up period: trước khi đủ số mẫu tối thiểu, fallback về static box gốc để tránh box dao động quá mạnh ở giai đoạn khởi động.
+State của module | State lưu hoàn toàn trên RAM và có kích thước O(1) theo từng key thống kê, không lưu toàn bộ lịch sử mẫu:
+• μ: trung bình động hiện tại.
+• σ hoặc σ²: phương sai / độ lệch chuẩn động hiện tại.
+• sample_count hoặc warmup_count để quyết định đã đủ dữ liệu vận hành hay chưa.
+• timestamp cập nhật cuối cùng để phục vụ cleanup hoặc kiểm tra state stale.
+Nhờ chỉ lưu vài biến số thực cho mỗi key, module tiêu thụ rất ít bộ nhớ và không tạo áp lực RAM như các thiết kế lưu cả buffer lịch sử.
+Edge cases (Ngoại lệ) | • Zero variance: khi mọi xe chạy gần như cùng một vận tốc, σ = 0 làm hộp co về quá nhỏ hoặc thành đường thẳng. Luôn áp dụng Δ_min > 0 để bảo vệ hệ thống trước zero-variance và sai số cảm biến tối thiểu.
+• Drift đột ngột / spike lớn: một giá trị outlier có thể làm Δ_t nở bất thường. Cần dùng clamp bằng Δ_max và có thể thêm rule bỏ qua điểm cực đoan trước khi update EMA.
+• Cold start: khi hệ thống mới chạy và chưa đủ mẫu, không nên tin hoàn toàn vào σ; nên dùng static bounds hoặc bounds bán cố định cho đến khi qua warm-up.
+• Thiếu feature context: nếu event không có trường dùng để cập nhật EMA, module không được suy diễn bừa; cần fallback về box tĩnh gần nhất hoặc bỏ qua cập nhật state cho feature đó.
+• State bị stale theo partition: với các nhóm ít dữ liệu, μ và σ có thể quá cũ; cần timeout để reset state hoặc đánh dấu degraded mode.
+
+
+[TABLE 7]
+Mục tiêu module | Giải quyết nút thắt cổ chai về RAM và CPU khi hệ thống phải chạy đồng thời 50+ luật. Thay vì để mỗi luật tự có một cây hoặc một không gian riêng, module này gom các luật có cấu trúc tương thích vào chung các nhóm truy vấn, từ đó giảm số lượng KD-tree cần duy trì, giảm số lần Rapidash phải tra cứu lặp lại và hạn chế lời nguyền số chiều.
+Cách hoạt động (Logic lõi) | Module nhận toàn bộ tập luật đầu vào và tối ưu theo lô trước khi chuyển sang pha truy vấn.
+• Bước 1 - chuẩn hóa luật: parse từng DC thành hai phần rõ ràng: equality predicates và inequality predicates. Ví dụ tách các điều kiện như VehicleType = VehicleType, region = region khỏi các điều kiện dạng <, >, ≤, ≥ trên time, distance, fare, speed.
+• Bước 2 - Greedy Grouping: duyệt lần lượt các luật và gom những luật có cùng equality key vào cùng một nhóm. Equality key nên được materialize thành một signature ổn định, ví dụ (VehicleType, PaymentType) hoặc một hash của tập predicates bằng nhau.
+• Bước 3 - xây không gian dùng chung: với mỗi nhóm, hợp nhất các chiều bất phương trình thành một không gian K chiều. Chỉ giữ nhóm hợp lệ nếu K ≤ K_max (ví dụ K_max = 5). Nếu thêm một luật mới làm K vượt ngưỡng, luật đó phải được tách sang nhóm khác thay vì nhồi vào chung một cây.
+• Bước 4 - Infinite Padding: nếu một luật không dùng một chiều nào đó của không gian chung, chiều đó được gán bound là [−∞, +∞]. Nhờ vậy, nhiều luật khác nhau vẫn cùng sống trong một KD-tree mà không làm sai logic truy vấn. Khi Rapidash kiểm tra box của luật đó, các trục không liên quan sẽ tự động không cắt bớt miền tìm kiếm.
+• Bước 5 - cost-aware packing: trong trường hợp có nhiều cách gom nhóm, ưu tiên cách làm giảm tổng số cây và tổng số chiều hoạt động, đồng thời giữ mật độ box trong từng nhóm ở mức hợp lý để pruning còn hiệu quả.
+• Bước 6 - materialize ActiveBox: với mỗi luật sau tối ưu, xuất ra ActiveBox gồm {group_id, rule_id, equality_signature, dimensions, padded_bounds, feature_mapping, priority}. Danh sách này là đầu vào trực tiếp cho Rapidash ở thời điểm truy vấn.
+Gợi ý triển khai cho Dev:
+• Thuật toán greedy đủ thực dụng cho bản đầu: sắp luật theo equality signature trước, sau đó xét từng luật để nhét vào nhóm có chi phí tăng thêm thấp nhất.
+• Có thể định nghĩa cost = λ1 * số chiều mới phát sinh + λ2 * số box trong nhóm + λ3 * ước lượng độ thưa của dữ liệu. Chọn nhóm có cost nhỏ nhất nhưng vẫn thỏa K_max.
+• Không nên gom quá mạnh: cùng một equality key nhưng nếu hợp nhất làm không gian quá loãng, pruning của KD-tree sẽ yếu đi và CPU có thể tăng ngược trở lại.
+• Module này nên chạy lại khi tập luật thay đổi, khi deploy ruleset mới hoặc theo chu kỳ bảo trì; không nhất thiết phải chạy trên từng event.
+Output | Đầu ra là List<ActiveBox> hoặc cấu trúc tương đương, đã được đóng gói theo nhóm tối ưu trước khi đưa sang Rapidash.
+Mỗi phần tử đầu ra tối thiểu nên chứa:
+• group_id: nhóm dùng chung để chọn đúng KD-tree / index.
+• rule_id: định danh luật gốc.
+• equality_signature: khóa phân vùng của nhóm.
+• active_dimensions: danh sách trục thật sự tham gia.
+• padded_bounds: bound đã được infinite padding thành [−∞, +∞] ở các trục không dùng.
+• metadata cấu hình như K hiện tại, K_max, priority hoặc version của ruleset.
+Đầu ra này phải đủ giàu thông tin để Rapidash không cần parse lại luật gốc trong runtime path.
+
+
+
+================================================================================
+FILE: interaction_flow_data_flow.docx
+================================================================================
+WAVES
+CHƯƠNG 3 - INTERACTION FLOW / DATA FLOW
+Tài liệu đặc tả luồng tương tác và luồng dữ liệu
+CHƯƠNG 3: LUỒNG TƯƠNG TÁC VÀ LUỒNG DỮ LIỆU
+Tài liệu này mô tả đúng phần luồng xử lý của WAVES: từ lúc event đi vào stream, window được cập nhật, Stream DaQ chạy basic checks, dữ liệu được đẩy sang logical engine, Rapidash tạo candidate violation, Weever cập nhật index theo cách incremental, cho đến khi Watermark quyết định việc giữ, hủy hoặc final hóa alert.
+3.1. Luồng chính end-to-end
+Chuỗi xử lý tổng quát: Event -> Window -> Basic Checks -> Logical Engine -> Rapidash -> Weever -> Watermark / Decision -> Final Alert -> Meta-stream
+3.2. Các flow bắt buộc phải viết
+3.2.1. Normal flow
+Kịch bản: dữ liệu đến đúng thứ tự, window cập nhật bình thường, hệ thống kiểm tra và xuất kết quả theo luồng chuẩn.
+Điểm chốt của flow: Candidate violation được tạo ở bước 4; provisional alert được tạo ở bước 5; final alert được chốt ở bước 7.
+3.2.2. Late data flow
+Kịch bản: dữ liệu đến muộn, alert bị giữ tạm và hệ thống phải re-check trước khi chốt.
+Điểm chốt của flow: Bước 3 là điểm duy nhất có thể hủy alert tạm; đồng thời đây cũng là điểm có thể sinh thêm provisional alert mới nếu late data làm lộ ra vi phạm khác.
+3.2.3. Window slide flow
+Kịch bản: record mới đi vào, record cũ bị đẩy ra, state và index được cập nhật incremental.
+Điểm chốt của flow: Bước 2 thể hiện Drop TreePane O(1) và giải phóng tombstone theo pane; bước 3 là điểm chốt final hóa các alert tạm còn lại trong cửa sổ cũ.
+3.3. Các điểm cần thể hiện trong flow
+Phần này gom lại các điểm chốt bắt buộc phải nhìn thấy rõ trong flow: trigger của từng bước, input / output, nơi tạo candidate violation, nơi tạo provisional alert, nơi final hóa alert, nơi có thể hủy alert tạm và thứ tự dữ liệu chạy giữa các block.
+Ma trận interaction matrix
+Thứ tự chạy dữ liệu giữa các block
+3.4. Mô tả logic mã giả của các module lõi
+Phần này bổ sung mã giả ở mức thiết kế để làm rõ cách các block tương tác với nhau trong lúc chạy thực tế. Mục tiêu không phải viết code triển khai cụ thể, mà là chỉ ra đúng luồng xử lý, điểm vào/ra dữ liệu, và nơi phát sinh hoặc rút lại alert.
+3.4.1. Thuật toán duyệt lô đa luật tại tầng Rapidash
+Mục đích: Thực hiện cơ chế Box Dropping. Thay vì duyệt cây nhiều lần cho nhiều luật, hệ thống duyệt một lần và mang theo danh sách các hộp truy vấn đang còn hiệu lực (ActiveBoxes). Hộp nào không còn giao cắt với vùng không gian của nhánh hiện tại sẽ bị loại sớm, không đẩy xuống đệ quy nữa.
+Đầu vào: Node hiện tại, NodeRegion, ActiveBoxes, và TombstoneFilter.
+Kết quả đầu ra: Danh sách candidate violations theo từng rule tương ứng với các hộp còn khớp tại nút lá.
+Ý nghĩa của luồng xử lý này:
+• ActiveBoxes rỗng là điều kiện cắt tỉa mạnh nhất: toàn bộ nhánh con dừng ngay, không phát sinh truy vấn thừa.
+• Tại nút lá, TombstoneFilter bảo đảm hệ thống bỏ qua ghost data hoặc record cũ đã bị vô hiệu hóa do retraction.
+• Tại nút trong, thao tác giao cắt là nơi diễn ra Box Dropping: hộp không giao cắt sẽ rụng khỏi nhánh, nhờ đó giảm bùng nổ chi phí khi cây đi sâu.
+• Candidate violation chỉ được sinh ra ở nút lá, sau khi record thật sự rơi vào một hộp truy vấn của luật tương ứng.
+3.4.2. Cơ chế rút lại và sửa sai tại tầng Decision
+Mục đích: Xử lý dữ liệu đến trễ hoặc sai thứ tự mà không phải phá và xây lại toàn bộ cấu trúc KD-Tree. Khi late event làm cho một provisional alert cũ trở nên sai, hệ thống rút lại alert đó trước, sau đó đưa event đúng chạy lại qua pipeline.
+Đầu vào: LateEvent, AlertStateStore, TombstoneFilter, và pipeline xử lý chuẩn của hệ thống.
+Kết quả đầu ra: Retraction alert để xóa cảnh báo sai, cùng với các provisional alert mới nếu late event sau khi chạy lại vẫn tạo ra vi phạm.
+Ý nghĩa của luồng xử lý này:
+• Bước tra cứu AlertStateStore là nơi nối tầng Decision với lịch sử alert đã phát ra trước đó.
+• TombstoneFilter đóng vai trò vô hiệu hóa bản ghi cũ theo thời gian O(1), để KD-Tree không cần bị đập đi xây lại.
+• Retraction alert được phát ra trước khi chạy lại late event, nhờ đó dashboard có thể xóa đúng dòng cảnh báo sai.
+• LateEvent sau khi được chuẩn hóa sẽ quay trở lại pipeline chuẩn: Window Manager -> Basic Checks -> Rapidash -> Decision -> Weever.
+• Nếu late event không còn tạo vi phạm, hệ thống chỉ giữ bản retraction; nếu có vi phạm mới, hệ thống phát provisional alert mới và tiếp tục chờ watermark final hóa.
+Kết luận kỹ thuật của mục 3.4: hai đoạn mã giả trên là bằng chứng thi công cho hai điểm khó nhất của flow. Rapidash chịu trách nhiệm tạo candidate violations bằng duyệt lô đa luật có Box Dropping; tầng Decision chịu trách nhiệm sửa sai khi có late data bằng cơ chế retraction stream mà vẫn giữ được trạng thái incremental của toàn hệ thống.
+
+[TABLE 1]
+Phạm vi: chỉ trình bày đúng phần 3 theo sườn yêu cầu: luồng end-to-end, ba flow bắt buộc, các điểm chốt về trigger / input / output và vòng đời alert.
+
+
+[TABLE 2]
+Bước | Thành phần | Trigger | Input | Xử lý | Output
+01 | Event đi vào stream | Event mới từ stream input | Raw stream event | Tiếp nhận, gán event-time và chuyển vào hệ thống xử lý | Sự kiện đã sẵn sàng cho window manager
+02 | Window được cập nhật | Xác định cửa sổ theo event-time | Event đã được gán mốc thời gian | Window Manager gán bản ghi vào cửa sổ hiện tại hoặc cửa sổ liên quan | Trạng thái window được cập nhật
+03 | Stream DaQ chạy basic checks | Window nhận thêm bản ghi mới | Bản ghi trong cửa sổ | Chạy các kiểm tra cơ bản như null, range, aggregate và ghi nhận quality metadata nền | Bản ghi hợp lệ và basic metadata
+04 | Đẩy sang logical engine | Bản ghi vượt qua lớp basic checks | Clean record và context của window | Dữ liệu cần kiểm tra logic được chuyển sang engine đối chiếu denial constraints | Tập dữ liệu sẵn sàng tạo candidate violation
+05 | Rapidash tìm vùng có khả năng vi phạm | Logical engine kích hoạt truy vấn logic | Record đang xét + chỉ mục hiện tại | Biến điều kiện logic thành truy vấn không gian và trả về vùng có khả năng chứa vi phạm | Candidate violations
+06 | Weever chỉ update phần thay đổi | Có insert mới hoặc delete do window slide | Bản ghi mới / bản ghi hết hạn + index hiện tại | Cập nhật index theo cách incremental thay vì xây lại toàn bộ | State và index mới nhất
+07 | Watermark giữ kết luận tạm thời | Candidate violation vừa được sinh ra | Candidate violations + thông tin watermark | Decision layer tạo provisional alert và tạm giữ nếu còn khả năng xuất hiện late data | Provisional alert
+08 | Qua ngưỡng chờ thì chốt alert cuối | Watermark >= window end + wait_for_late | Lịch sử provisional alert chưa bị hủy | Đóng cửa sổ logic và final hóa các alert còn hiệu lực | Final alert
+09 | Xuất meta-stream / alert stream | Basic checks xong hoặc final alert đã chốt | Basic stats + alert đã final hóa | Đóng gói thành luồng output thống nhất để gửi sang sink / broker | Quality meta-stream và alert stream
+
+
+[TABLE 3]
+Trigger: Bản ghi mới R_new đi vào với EventTime >= CurrentWatermark.
+
+
+[TABLE 4]
+Bước | Block | Xử lý | Kết quả / trạng thái
+1 | Window Manager | Nhận R_new và gán vào cửa sổ hiện hành | Window được cập nhật
+2 | Statistical Context Engine | Truyền R_new vào Statistical Context Engine để chạy thuật toán EMA, cập nhật lại phương sai σ của luồng giao thông. | σ và ngữ cảnh thống kê được cập nhật (O(1))
+3 | Elastic Box Generator | Gửi σ sang Elastic Box Generator. Module này kết hợp với các luật tĩnh để co giãn và sinh ra danh sách Hộp truy vấn (ActiveBoxes). | Danh sách ActiveBoxes tương ứng các luật
+4 | Batched Traversal Processor (Rapidash / Weever) | Truyền ActiveBoxes vào Batched Traversal Processor để lội rừng cây, áp dụng cơ chế Rụng hộp (Box Dropping). Trả về Candidate Violations. | Candidate violations
+5 | Decision Layer | Đánh giá candidate violations và phát cảnh báo sớm | Sinh provisional alert
+6 | Weever | Insert R_new vào KD-Tree của Active Pane (pane-based forest); không rebuild toàn bộ | State và index được cập nhật theo pane-incremental
+7 | Watermark Layer | Khi watermark vượt qua window end + wait_for_late, đóng cửa sổ logic và chốt kết quả | Finalize alert và xuất meta-stream
+
+
+[TABLE 5]
+Trigger: Bản ghi muộn R_late đi vào với EventTime < CurrentWatermark nhưng vẫn nằm trong ngưỡng wait_for_late.
+
+
+[TABLE 6]
+Bước | Block | Xử lý | Kết quả / trạng thái
+1 | Window Manager | Không bỏ qua R_late; chèn ngược nó vào cửa sổ quá khứ phù hợp | Cửa sổ cũ được mở lại để re-check
+2 | Rapidash | Tra cứu lại R_late trên index của thời điểm đó để đánh giá tác động logic | Kích hoạt re-check
+3 | Decision Layer | Nếu R_late bác bỏ cảnh báo cũ thì hủy provisional alert; nếu tạo vi phạm mới thì sinh provisional alert mới | Có thể cancel alert tạm hoặc tạo thêm alert tạm
+4 | Weever | Insert R_late vào index của cửa sổ cũ theo cơ chế incremental | Index lịch sử được cập nhật
+5 | Watermark Layer | Tiếp tục chờ đến khi watermark vượt ngưỡng chờ để chốt kết quả cuối cùng | Final alert nếu vẫn còn hiệu lực
+
+
+[TABLE 7]
+Trigger: Watermark clock vượt qua ranh giới bước trượt của cửa sổ.
+
+
+[TABLE 8]
+Bước | Block | Xử lý | Kết quả / trạng thái
+1 | Window Manager | Xác định các bản ghi R_expired đã rơi khỏi phạm vi cửa sổ | Danh sách record hết hạn
+2 | Weever | Weever nhận lệnh trượt. Thay vì thực hiện incremental delete dò tìm từng bản ghi R_expired để xóa lá, Weever thực hiện Drop TreePane O(1): cắt con trỏ và giải phóng hoàn toàn vùng nhớ của Lát cắt KD-Tree cũ nhất, kèm theo Tombstone Filter của nó. | Pane cũ được giải phóng O(1); index còn lại phản ánh đúng cửa sổ mới
+3 | Window Manager + Watermark | Đóng gói cửa sổ cũ; mọi provisional alert còn hiệu lực trong cửa sổ này được chuyển sang trạng thái final | Final alert cho cửa sổ vừa đóng
+4 | Output Manager | Xuất gói tổng kết của cửa sổ vừa seal ra ngoài | Meta-stream của window
+
+
+[TABLE 9]
+Candidate Violation | Provisional Alert | Cancel / Retract | Final Alert
+Rapidash tạo ứng viên vi phạm từ truy vấn logic. | Decision layer phát cảnh báo tạm để theo dõi sớm. | Late data có thể hủy alert tạm nếu kết luận cũ là sai. | Watermark final hóa alert còn hiệu lực sau ngưỡng chờ.
+
+
+[TABLE 10]
+Hành động / điểm chốt | Module | Trigger | Input | Output
+Sinh candidate violation | Rapidash Layer | Record mới hoặc late record vượt qua basic checks | Record đang xét + index hiện tại | Danh sách candidate violations
+Sinh provisional alert | Decision Layer | Nhận candidate violation từ Rapidash | Candidate violations | Provisional alert
+Hủy alert tạm | Decision Layer | Late data flow chứng minh cảnh báo cũ là sai | Late record + provisional alert liên quan | Retraction / cancel alert
+Chốt final alert | Watermark Layer | Watermark >= window end + wait_for_late | Lịch sử provisional alert chưa bị hủy | Final alert bất biến
+Cập nhật index incremental | Weever Maintenance | Insert mới hoặc delete do window slide | R_new hoặc R_expired + state hiện tại | Index đã cập nhật
+Xuất quality meta-stream | Output Manager | Basic checks xong hoặc final alert đã chốt | Basic stats + final alerts | Meta-stream payload / alert stream
+
+
+[TABLE 11]
+[Stream Input] -> [Window Manager] -> [Basic DaQ] -> [Logical Engine] <-> [Rapidash + Weever Index] -> [Watermark / Decision] -> [Alert Output]
+
+
+[TABLE 12]
+Pseudo-code A - Batched Traversal / Box Dropping
+procedure BatchedTraversal(Node, NodeRegion, ActiveBoxes, TombstoneFilter):
+    if ActiveBoxes is empty:
+        return []
+
+    if Node is Leaf:
+        if TombstoneFilter.contains(Node.record_id):
+            return []
+
+        Violations <- []
+        for each Box in ActiveBoxes:
+            if PointInsideBox(Node.point, Box):
+                Violations.append(
+                    CandidateViolation(rule_id = Box.rule_id,
+                                       record_id = Node.record_id)
+                )
+        return Violations
+
+    LeftChild, RightChild <- Node.children
+    LeftRegion, RightRegion <- SplitRegion(NodeRegion,
+                                           Node.split_dim,
+                                           Node.split_value)
+
+    LeftBoxes <- []
+    RightBoxes <- []
+
+    for each Box in ActiveBoxes:
+        if Intersects(Box, LeftRegion):
+            LeftBoxes.append(Box)
+        if Intersects(Box, RightRegion):
+            RightBoxes.append(Box)
+
+    LeftResult <- BatchedTraversal(LeftChild,
+                                   LeftRegion,
+                                   LeftBoxes,
+                                   TombstoneFilter)
+    RightResult <- BatchedTraversal(RightChild,
+                                    RightRegion,
+                                    RightBoxes,
+                                    TombstoneFilter)
+
+    return Merge(LeftResult, RightResult)
+
+
+[TABLE 13]
+Pseudo-code B - Retraction Stream / Late Re-check
+procedure HandleLateEvent(LateEvent):
+    OldAlerts <- AlertStateStore.find_by_event_id(LateEvent.id)
+
+    if OldAlerts is not empty:
+        for each Alert in OldAlerts:
+            TombstoneFilter.add(Alert.source_record_id)   // O(1)
+            EmitRetractionAlert(alert_id = Alert.id, delta = -1)
+            AlertStateStore.mark_retracted(Alert.id)
+
+    RecomputedEvent <- NormalizeAndRepair(LateEvent)
+
+    RouteToWindowManager(RecomputedEvent)
+    BasicResult <- RunBasicChecks(RecomputedEvent)
+
+    if BasicResult.should_enter_logical_engine:
+        CandidateList <- BatchedTraversal(
+            RootNode,
+            CurrentNodeRegion,
+            BuildActiveBoxes(RecomputedEvent),
+            TombstoneFilter
+        )
+
+        NewAlerts <- DecisionEvaluate(CandidateList,
+                                      mode = "late_recheck")
+
+        EmitProvisionalAlerts(NewAlerts)
+        AlertStateStore.upsert(NewAlerts)
+
+    WeeverInsert(RecomputedEvent)
+    return
+
+
+
+================================================================================
+FILE: state_time_semantics.docx
+================================================================================
+4.1. Mô hình thời gian và window
+Hệ thống được mô tả theo event-time: record được đặt vào window dựa trên thời điểm sự kiện xảy ra, không phải thời điểm máy chủ nhận dữ liệu. Cách hiểu này là nền tảng để xử lý đúng late data và out-of-order data.
+Các tham số cần chốt
+Quy tắc thêm, loại và tạo snapshot
+• Một record R thuộc window [t, t+W) nếu t ≤ event_time(R) < t+W.
+• Khi window trượt thêm một bước S, hệ thống xác định hai tập chênh lệch: record mới đi vào và record cũ rời khỏi window.
+• Snapshot được tạo sau khi delta của lần trượt đã được xác định xong: tập insert, tập delete và state sau cập nhật.
+Ví dụ theo một lần trượt
+4.2. State của hệ thống
+Để hỗ trợ kiểm tra logic trong window hiện hành và quyết định hai pha khi có late data, hệ thống phải duy trì một số state tối thiểu. Mỗi state cần có quy tắc rõ: giữ lại cái gì, xóa cái gì, và đổi như thế nào khi insert hoặc delete.
+Các loại state cần mô tả
+• Window state: Giữ các record còn hiệu lực trong cửa sổ.
+• Index / tree state: Biểu diễn có cấu trúc của dữ liệu trong window để truy vấn nhanh.
+• Pending violation state: Lưu các vi phạm tạm đang chờ watermark hoặc late data xác minh.
+• Alert state: Lưu các cảnh báo đã phát ra hoặc đang được theo dõi.
+• Context state (EMA): Giữ các biến ngữ cảnh thống kê rất nhẹ như trung bình μ và phương sai σ²; được cập nhật liên tục bằng Exponential Moving Average nên chỉ cần ghi đè O(1), không giữ lịch sử mảng dữ liệu.
+• Tombstone state: Giữ định danh vật lý của các record đã bị vô hiệu hóa do lỗi hoặc đến trễ; ưu tiên cài đặt bằng Cuckoo Filter hoặc Bloom Filter để tra cứu gần O(1) và tiết kiệm RAM.
+Ma trận vòng đời state
+Nguyên tắc cập nhật state
+• Insert ít nhất làm thay đổi window state và index/tree state.
+• Context state được cập nhật theo EMA ở mỗi sự kiện đi qua; state này chỉ ghi đè vài giá trị thực nên tiêu thụ bộ nhớ gần như hằng số và không có nguy cơ phình theo thời gian chạy.
+• Tombstone state nên được cấp phát theo từng pane của window; khi pane trượt ra khỏi cửa sổ, filter tombstone của pane đó được drop O(1) cùng phần state liên quan để tránh memory leak.
+• Delete không chỉ xóa record khỏi buffer mà còn phải làm sạch index và pending violation liên quan.
+• Pending violation state và alert state phải gắn với watermark hoặc allowed lateness để tránh phình state và sai ngữ nghĩa.
+4.3. Watermark, provisional và final decision
+Phần này mô tả watermark dùng để quyết định điều gì, provisional violation khác final violation ở đâu, và khi nào hệ thống check, re-check, chốt alert hoặc xóa state cũ.
+Watermark dùng để quyết định cái gì
+• Xác định mốc thời gian mà hệ thống xem là đã quan sát đủ dữ liệu cho một vùng event-time.
+• Kích hoạt các quyết định liên quan đến trượt window, chốt snapshot và dọn state cũ.
+• Phân biệt giữa kết luận tạm thời và kết luận cuối cùng đối với một vi phạm logic.
+Phân biệt provisional violation và final violation
+Chu trình quyết định
+Điểm chốt cuối của phần 4.3
+• Khi nào check: ngay khi record được đưa vào xử lý.
+• Khi nào re-check: khi late data hoặc out-of-order data làm thay đổi bằng chứng của quyết định cũ.
+• Khi nào chốt alert: khi watermark đã vượt qua ngưỡng cần thiết để không chờ thêm dữ liệu trễ.
+• Khi nào xóa state cũ: sau finalize hoặc sau khi một provisional alert bị retract và không còn giá trị theo dõi.
+
+[TABLE 1]
+State & Time Semantics Document
+Đặc tả ngữ nghĩa thời gian, state lifecycle và decision semantics cho WAVES.
+Tài liệu bám đúng khung 4.1–4.3 và chỉ bổ sung phần làm rõ cần thiết từ Report.
+
+
+[TABLE 2]
+Phạm vi tài liệu
+• Chỉ bao phủ 4.1 Mô hình thời gian và window; 4.2 State của hệ thống; 4.3 Watermark, provisional và final decision.
+• Làm rõ khi nào record được thêm/xóa, state nào đổi theo insert/delete, và khi nào hệ thống check, re-check, finalize hoặc xóa state cũ.
+
+
+[TABLE 3]
+Thành phần | Ký hiệu | Ý nghĩa | Ví dụ
+Window type | Sliding time window | Cửa sổ thời gian trượt, dịch theo bước cố định. | Window 10 phút
+Window size | W | Độ rộng thời gian của cửa sổ đang đánh giá. | W = 10 phút
+Slide step | S | Khoảng thời gian cửa sổ dịch sang phải sau mỗi lần cập nhật. | S = 2 phút
+Overlap | W − S | Phần dữ liệu còn nằm lại giữa hai cửa sổ liên tiếp. | 8 phút
+
+
+[TABLE 4]
+Bước | Window | Tác động
+Bước 1 | [00:00, 00:10) | Chứa các record có event-time từ 00:00 đến trước 00:10.
+Bước 2 | [00:02, 00:12) | Thêm record trong [00:10, 00:12); loại record trong [00:00, 00:02).
+Snapshot | sau khi trượt | Chốt delta: danh sách insert, delete và state sau cập nhật.
+
+
+[TABLE 5]
+Điểm cần giữ nhất trong 4.1
+• Overlap lớn là nguồn gốc của tính toán lặp lại nếu state không được cập nhật incremental.
+• Trong cách hiểu thống nhất của WAVES, Rapidash phục vụ check logic nhanh trên snapshot hiện hành, còn Weever giúp index/tree state chỉ cập nhật phần chênh lệch.
+
+
+[TABLE 6]
+Loại state | Khi insert | Khi delete / trượt | Giữ lại / xóa bỏ
+Window state | Thêm record mới vào buffer. | Loại record đã ra khỏi miền thời gian. | Chỉ giữ record còn hiệu lực.
+Index / tree state | Chèn node/lá mới. | Gỡ node/lá của record hết hạn. | Giữ liên tục nhưng đổi theo delta.
+Pending violation state | Ghi nhận ứng viên vi phạm. | Hủy, cập nhật hoặc chuyển finalize. | Chỉ giữ trong thời gian chờ quyết định.
+Alert state | Sinh mới khi phát cảnh báo. | Chỉ đổi nếu late data buộc re-check. | Giữ đến khi retract hoặc hết hạn lưu giữ.
+Context state (EMA) | Cập nhật μ và σ² bằng EMA; chỉ ghi đè O(1). | Không cần delete theo từng record; tự điều chỉnh theo dòng sự kiện mới. | Giữ vài biến số thực, không lưu lịch sử mảng dữ liệu.
+Tombstone state | Đánh dấu physical ID của record bị vô hiệu hóa/lỗi/trễ. | Drop theo pane khi pane rời window hoặc hết hiệu lực. | Cấp phát riêng theo pane; không phình vô hạn.
+
+
+[TABLE 7]
+Loại quyết định | Bản chất | Khi nào dùng
+Provisional violation | Kết luận tạm tạo ra ngay sau check lần đầu. | Dùng khi cần phản ứng nhanh nhưng vẫn chấp nhận khả năng late data đổi kết quả.
+Final violation | Kết luận cuối sau khi qua watermark và allowed lateness. | Dùng để chốt alert và ghi nhận kết quả ổn định.
+
+
+[TABLE 8]
+Check | Ngay khi record đi vào pipeline hoặc window, hệ thống kiểm tra và có thể sinh provisional violation.
+Re-check | Khi late data tới, hệ thống đối chiếu lại các violation hoặc alert đã có để hủy, sửa hoặc giữ nguyên kết luận cũ.
+Chốt alert | Khi watermark vượt qua ngưỡng chờ cần thiết, các provisional violation còn hợp lệ được finalize thành kết quả ổn định.
+Xóa state cũ | Sau finalize hoặc sau retract, các pending state, snapshot cũ và alert không còn cần theo dõi sẽ bị dọn.
+
+
+[TABLE 9]
+Quy tắc xử lý late data
+• Late data là một phần của ngữ nghĩa hệ thống, không phải ngoại lệ hiếm.
+• Mọi provisional decision đều phải có khả năng bị re-check.
+• Khi late data tới sau một provisional alert, hệ thống phải cập nhật state liên quan và có thể retract hoặc điều chỉnh cảnh báo cũ.
+
+
+[TABLE 10]
+Kết luận ngắn
+WAVES phải được hiểu như một hệ thống window + state + watermark vận hành cùng nhau: window quyết định record nào còn hiệu lực, state giữ phần cần thiết để check và ra quyết định, watermark quyết định khi nào được phép chốt cuối.
+
+
+
+================================================================================
+FILE: thuc_nghiem.docx
+================================================================================
+WAVES
+Documentation đánh giá thực nghiệm
+Phiên bản biên soạn lại theo cấu trúc tài liệu kỹ thuật, phục vụ viết báo cáo, thiết kế benchmark và triển khai thí nghiệm.
+Nguồn biên soạn: nội dung từ bản thảo thực nghiệm gốc do người dùng cung cấp.
+1. Tổng quan chương thực nghiệm
+Chương này mô tả đầy đủ thiết kế benchmark cho WAVES — hệ thống phát hiện vi phạm logical data quality trên data stream. Mục tiêu của chương không chỉ là chứng minh hệ thống nhanh hơn, mà còn phải chứng minh hệ thống chính xác, chịu được concept drift, xử lý được late/out-of-order data và còn giữ được khả năng mở rộng khi số lượng luật tăng cao.
+1.1. Mục tiêu đánh giá
+• Đo hiệu năng xử lý của WAVES trong môi trường streaming.
+• Đo độ chính xác phát hiện vi phạm logic khi dữ liệu có trôi dạt ngữ cảnh và độ trễ mạng.
+• Đo khả năng mở rộng khi số lượng luật denial constraints tăng mạnh.
+• Tìm ra vùng tham số tối ưu giữa CPU, RAM, throughput, latency và F1-score.
+1.2. Phạm vi và giả định
+• Tập dữ liệu nền là NYC Taxi (Yellow Cab).
+• Dữ liệu gốc được xem là tương đối sạch về mặt nghiệp vụ, nhưng không có nhãn ground truth cho vi phạm logic.
+• Ground truth được tạo bằng pipeline tiêm nhiễu có kiểm soát.
+• Việc so sánh tập trung vào các biến thể ablation của chính WAVES để đảm bảo công bằng về parser, phần cứng và môi trường chạy.
+2. Câu hỏi nghiên cứu
+Mọi kịch bản thực nghiệm đều phải quy chiếu về bốn câu hỏi nghiên cứu cốt lõi. Mỗi câu hỏi được gắn với giả thuyết, metrics và thực nghiệm cụ thể để tránh đánh giá rời rạc.
+3. Dữ liệu và chiến lược tiêm nhiễu
+Do NYC Taxi không có sẵn ground truth cho lỗi logic, toàn bộ chương thực nghiệm phải dựa vào một data injection pipeline có kiểm soát. Mục tiêu của pipeline là tạo ra tập dữ liệu benchmark vừa có nhãn sai phạm rõ ràng, vừa mô phỏng được những điều kiện streaming thực tế.
+3.1. Tập dữ liệu nền
+• Nguồn dữ liệu: NYC Taxi (Yellow Cab).
+• Dạng dữ liệu phù hợp: CSV hoặc Parquet.
+• Nhóm thuộc tính cốt lõi: thời gian, không gian, đo lường và tài chính.
+• Các trường được ưu tiên khai thác: pickup/dropoff time, PULocationID, DOLocationID, trip_distance, fare_amount, total_amount, trip_duration, tolls_amount, RatecodeID.
+3.2. Logic xây dựng ground truth
+Ground truth không được lấy từ dữ liệu tự nhiên mà được sinh ra thông qua các phép biến đổi có kiểm soát trên một tỷ lệ nhỏ bản ghi. Điều này cho phép biết chính xác bản ghi nào bị tiêm lỗi, loại lỗi nào được tiêm và thời điểm nào hiện tượng nhiễu xảy ra.
+3.3. Module 1 — Tiêm vi phạm logic
+Module này phục vụ tạo ra các bản ghi gian lận hoặc bất thường vật lý nhằm đo Recall của hệ thống. Các bản ghi bị chọn để tiêm sẽ trở thành positive ground truth trong đánh giá.
+Các pattern tiêm tiêu biểu:
+• Fare Inflation: nhân fare_amount lên một hệ số đủ lớn để tạo bất thường so với các chuyến tương đồng.
+• Time–Distance Anomaly: ép trip_duration xuống mức phi lý hoặc làm mất cân đối giữa thời gian và quãng đường.
+• Distance Collapse: giảm trip_distance xuống quá thấp nhưng vẫn giữ fare hoặc toll ở mức cao.
+3.4. Module 2 — Tiêm trôi dạt ngữ cảnh
+Khác với lỗi logic chỉ xảy ra trên số ít bản ghi, concept drift là thay đổi mang tính toàn cục hoặc theo cụm. Kịch bản điển hình là chọn một khoảng thời gian cao điểm, sau đó tăng trip_duration của phần lớn chuyến xe trong vùng thời gian đó. Kết quả mong đợi là hệ thống tĩnh sẽ bùng nổ false positives, còn WAVES dùng EMA sẽ tự nới hộp kiểm tra để thích nghi.
+3.5. Module 3 — Tiêm độ trễ mạng và đảo thứ tự
+Mỗi sự kiện được gán hai mốc thời gian: EventTime và IngestionTime. Phần lớn dữ liệu đến đúng giờ; một tỷ lệ nhỏ bị trì hoãn từ 2–5 phút để mô phỏng late data. Toàn bộ dữ liệu sau đó được sắp xếp theo IngestionTime trước khi phát vào hệ thống nhằm tái hiện tình huống out-of-order thực tế.
+• Khoảng 90% dữ liệu on-time: IngestionTime xấp xỉ EventTime cộng vài phần mười giây.
+• Khoảng 10% dữ liệu late: IngestionTime trễ hơn EventTime từ 120–300 giây.
+• Một phần late records được chọn làm “bằng chứng đối chứng” để kích hoạt luồng retraction.
+3.6. Pipeline chuẩn bị dữ liệu
+4. Bộ luật logic dùng để benchmark
+Để phô diễn đúng thế mạnh của WAVES, các denial constraints không nên chỉ là luật kiểm tra đơn bản ghi đơn giản. Chúng phải là các luật so sánh chéo giữa nhiều bản ghi trong cùng cửa sổ thời gian.
+5. Hệ thống đối chuẩn và ablation study
+Phương pháp đối chuẩn trọng tâm là ablation study: tắt từng cơ chế cốt lõi để tạo ra các biến thể suy thoái của WAVES. Cách làm này công bằng hơn so với việc đem so trực tiếp với framework ngoài có parser, runtime và tối ưu triển khai khác nhau.
+5.1. Mục tiêu của từng baseline
+• NL-Stream dùng để chứng minh giá trị của Rapidash/KD-Tree đối với RQ1.
+• Single-Tree-DaQ dùng để chứng minh lý do cần pane-based forest thay vì một cây khổng lồ duy nhất.
+• Static-Box-DaQ dùng để chứng minh EMA elastic box là bắt buộc đối với RQ2.
+• Baseline 4 — WAVES-SingleRule (không gộp luật): Hệ thống có KD-Tree, có EMA, nhưng tắt tính năng Shared Rule Optimizer. Nếu có 50 luật, hệ thống sẽ chạy độc lập 50 cái Rừng cây. Dùng để chứng minh giải pháp Batched Traversal giúp hệ thống không bị tràn RAM và sụp tốc độ.
+• Buffer-Wait-DaQ dùng để chứng minh Tombstone/Retraction giúp giảm detection latency mà vẫn kiểm soát cảnh báo oan.
+6. Bộ chỉ số đo lường
+Việc đánh giá được chia thành hai mặt trận độc lập: hiệu năng hệ thống và độ chính xác thuật toán. Riêng với môi trường streaming có retraction, trạng thái đánh giá cuối cùng của một cảnh báo phải xét theo trạng thái sau khi cộng/trừ đầy đủ các tín hiệu [+1] và [-1].
+6.1. Metrics về hệ thống
+6.2. Metrics về chất lượng
+7. Thiết kế các thực nghiệm độ nhạy
+Ngoài benchmark chính, chương thực nghiệm cần có sensitivity analysis để chỉ ra vùng tham số tối ưu thay vì chỉ đưa ra một cấu hình duy nhất.
+8. Quy trình chạy benchmark end-to-end
+8.1. Khuyến nghị triển khai script chuẩn bị dữ liệu
+• Ngôn ngữ phù hợp: Python với Pandas hoặc PySpark.
+• Đầu vào ưu tiên: Parquet/CSV gốc của NYC Taxi.
+• Đầu ra: một file benchmark có đầy đủ nhãn ground truth, event time, ingestion time và các cờ đánh dấu loại nhiễu đã tiêm.
+• Có thể viết thêm Kafka producer giả lập để phát lại benchmark stream với tốc độ mong muốn.
+9. Kỳ vọng kết quả theo từng câu hỏi nghiên cứu
+10. Checklist dùng cho viết báo cáo hoặc triển khai
+• Đã xác định rõ bốn Research Questions và mapping với từng thí nghiệm.
+• Đã có pipeline tiêm nhiễu tạo ground truth có kiểm soát.
+• Đã định nghĩa đầy đủ bộ baselines/ablation.
+• Đã chốt bộ metrics cho cả system performance và algorithmic accuracy.
+• Đã có sensitivity analysis cho các siêu tham số chính.
+• Đã xác định rõ artefacts đầu ra: logs, alert streams, bảng số liệu và biểu đồ.
+• Đã có tiêu chí diễn giải kết quả theo từng RQ thay vì mô tả rời rạc.
+Phụ lục A. Gợi ý các biểu đồ nên xuất hiện trong chương
+• Throughput theo kích thước cửa sổ: WAVES vs NL-Stream.
+• P99 latency theo thời gian chạy: WAVES vs Single-Tree.
+• Precision/Recall/F1 trên dữ liệu có concept drift: WAVES vs Static-Box.
+• Detection latency: WAVES vs Buffer-Wait.
+• RAM và throughput khi tăng số luật: WAVES-Full vs WAVES-SingleRule (không gộp luật).
+• Sensitivity curves cho α, pane size và dimension cap.
+Phụ lục B. Ghi chú biên tập
+Tài liệu này được biên soạn lại từ bản nháp thực nghiệm gốc, với mục tiêu loại bỏ lặp ý, gom nhóm các luận điểm cùng chủ đề và chuyển thành bố cục documentation để dễ đọc hơn. Các công thức toán học chi tiết cho từng denial constraint có thể tách riêng thành phụ lục kỹ thuật nếu cần.
+
+[TABLE 1]
+Mục đích tài liệu
+• Chuẩn hóa lại chương đánh giá thực nghiệm cho hệ thống WAVES theo bố cục rõ ràng, dễ đọc và dễ triển khai.
+• Liên kết chặt chẽ giữa câu hỏi nghiên cứu, kịch bản tiêm nhiễu, hệ đối chuẩn, bộ metrics và các thực nghiệm độ nhạy.
+• Biến nội dung rời rạc thành một tài liệu có thể dùng trực tiếp cho báo cáo nghiên cứu hoặc làm spec thực nghiệm.
+
+
+[TABLE 2]
+Đầu vào – đầu ra của chương đánh giá
+• Đầu vào: tập dữ liệu NYC Taxi đã được làm sạch và tiêm nhiễu có kiểm soát.
+• Đầu ra: các biểu đồ, bảng số liệu và kết luận định lượng trả lời trực tiếp cho các Research Questions.
+• Tinh thần đánh giá: ablation study + benchmark có ground truth + sensitivity analysis.
+
+
+[TABLE 3]
+RQ | Câu hỏi | Giả thuyết kiểm chứng | Metrics chính
+RQ1 | WAVES có vượt cổ chai và đạt throughput cao hơn cách làm streaming truyền thống không? | KD-Tree + pane-based forest giúp throughput cao hơn và P99 latency ổn định hơn so với nested-loop/full scan. | Throughput, P99 latency, detection latency
+RQ2 | EMA và Tombstone có giúp hệ thống giữ F1-score cao khi gặp concept drift và late data không? | Elastic box làm giảm false positives; Tombstone/Retraction làm giảm cảnh báo oan do dữ liệu trễ. | Precision, Recall, F1-score
+RQ3 | Hệ thống có mở rộng tốt khi số lượng luật DC tăng lên 50–100 luật không? | Shared indexing và multi-rule traversal giúp RAM và throughput không suy giảm quá mạnh khi số luật tăng. | Memory footprint, throughput
+RQ4 | Các siêu tham số chính ảnh hưởng ra sao đến trade-off giữa hiệu năng và độ chính xác? | Tồn tại vùng tham số tối ưu cho α của EMA, pane size và giới hạn số chiều gộp luật. | P99 latency, average latency, F1-score, RAM
+
+
+[TABLE 4]
+Module | Mục tiêu | Hành động tiêm | Kết quả mong đợi
+Tiêm vi phạm logic | Sinh ground truth cho lỗi gian lận/phi lý | Mutate fare_amount, trip_distance hoặc trip_duration trên một tỷ lệ nhỏ bản ghi | Đo được Precision/Recall/F1 trực tiếp
+Tiêm concept drift | Mô phỏng kẹt xe/bão tuyết quy mô lớn | Tăng trip_duration của phần lớn xe trong một khung giờ cao điểm | Kiểm tra EMA elastic box có giảm false positives hay không
+Tiêm late & out-of-order | Mô phỏng độ trễ mạng và đảo thứ tự dòng sự kiện | Sinh ingestion time khác event time, trì hoãn 1–5 phút cho một phần dữ liệu | Kích hoạt watermark, tombstone và retraction
+
+
+[TABLE 5]
+Bước | Mô tả | Đầu ra
+B1. Base prep | Đọc dữ liệu gốc, loại bỏ lỗi vật lý hiển nhiên, chuẩn hóa schema | Tập dữ liệu nền sạch
+B2. Concept drift injection | Tiêm kịch bản kẹt xe/bão tuyết trên khung giờ mục tiêu | Tập dữ liệu có drift
+B3. Logical fraud injection | Tiêm vi phạm DC1/DC2/DC3 trên một tỷ lệ nhỏ bản ghi | Ground truth positives
+B4. Late-data injection | Sinh ingestion time, đảo thứ tự phát và gài bẫy retraction | Luồng dữ liệu benchmark cuối cùng
+
+
+[TABLE 6]
+Luật | Ý tưởng nghiệp vụ | Thành phần được kiểm chứng | Kỳ vọng
+DC1 — Fare–Distance Dominance | Hai xe có quãng đường gần nhau thì xe chạy ngắn hơn không nên có giá cao bất thường. | Rapidash/KD-Tree và khả năng cắt tỉa không gian tìm kiếm. | WAVES vượt NL-Stream rõ rệt về throughput.
+DC2 — Context-Aware Duration Anomaly | Các chuyến tương đồng không nên chênh thời gian quá lớn ngoài biên độ ngữ cảnh giao thông hiện tại. | EMA Elastic Box và khả năng thích nghi với concept drift. | WAVES giữ Precision cao khi gặp kẹt xe.
+DC3 — Toll Route Anomaly | Các chuyến cùng tuyến không nên có khác biệt phụ phí cầu đường bất thường. | Shared indexing và batched multi-rule traversal. | WAVES mở rộng tốt khi tăng số luật.
+
+
+[TABLE 7]
+Hệ thống | KD-Tree | Pane forest | EMA | Retraction | Điểm yếu bị phơi bày
+NL-Stream | ✗ | ✗ | ✗ | ✗ | CPU bão hòa do nested-loop O(N²), throughput rơi mạnh khi cửa sổ lớn.
+Single-Tree-DaQ | ✓ | ✗ | ✗ | ✗ | Cây lớn bị phân mảnh và sinh latency spikes khi xóa/chèn liên tục.
+Static-Box-DaQ | ✓ | ✓ | ✗ | ✓ | False positives bùng nổ khi gặp concept drift.
+WAVES-SingleRule | ✓ | ✓ | ✓ | ✓ | Tắt Shared Rule Optimizer: nhiều cây rời; RAM và throughput suy giảm khi số luật lớn (đối chứng cho Batched Traversal / gộp luật).
+Buffer-Wait-DaQ | ✓ | ✓ | ✓ | ✗ | Detection latency cao vì phải đợi watermark finalize.
+WAVES-Full | ✓ | ✓ | ✓ | ✓ | Mục tiêu cân bằng giữa throughput, latency, memory và độ chính xác.
+
+
+[TABLE 8]
+Metric | Ý nghĩa | Dùng để trả lời
+Throughput | Số events xử lý thành công mỗi giây; phản ánh sức nuốt dữ liệu và khả năng tránh backpressure. | RQ1, RQ3
+P99 Latency | Độ trễ của 1% sự kiện chậm nhất; phản ánh spikes do rebuild, GC hoặc phân mảnh cấu trúc. | RQ1, RQ4
+Detection Latency | Thời gian từ lúc sự kiện xảy ra đến lúc cảnh báo được nhìn thấy. | RQ2
+Memory Footprint | Lượng RAM tiêu thụ khi chạy liên tục hoặc khi tăng số lượng luật. | RQ3, RQ4
+
+
+[TABLE 9]
+Metric | Ý nghĩa | Ghi chú
+Precision | Tỷ lệ cảnh báo phát ra mà thực sự là vi phạm logic. | Đặc biệt nhạy với false positives do concept drift hoặc late data.
+Recall | Tỷ lệ vi phạm thực sự được hệ thống phát hiện. | Đặc biệt nhạy với việc bỏ lọt vùng tìm kiếm hoặc hộp quá rộng.
+F1-score | Trung bình điều hòa của Precision và Recall. | Dùng làm chỉ số cân bằng tổng thể giữa bắt oan và bỏ lọt.
+
+
+[TABLE 10]
+Nguyên tắc chấm điểm trong streaming có retraction
+• Không nên chốt Precision/Recall chỉ dựa trên các provisional alerts [+1].
+• Một cảnh báo chỉ được xem là còn tồn tại nếu sau giai đoạn quan sát nó không bị triệt tiêu bởi tín hiệu retraction [-1].
+• Cách chấm điểm này là cơ sở để chứng minh giá trị của Tombstone Filter.
+
+
+[TABLE 11]
+Thực nghiệm | Tham số thay đổi | Giữ cố định | Metrics quan sát | Kỳ vọng
+E1. Pane size | Kích thước lát cắt/pane | Cửa sổ 10 phút | P99 latency, average latency | Pane quá nhỏ gây nhiều gốc cây; pane quá lớn gây rebuild nặng.
+E2. EMA learning rate | α | Tập có concept drift | Precision, Recall, F1-score | α quá nhỏ: báo oan nhiều; α quá lớn: dễ bỏ lọt.
+E3. Shared indexing dimension cap | Giới hạn số chiều gộp luật | 100 luật DC | RAM, throughput | Gộp giúp giảm số cây, nhưng quá nhiều chiều sẽ dính curse of dimensionality.
+
+
+[TABLE 12]
+Pha | Việc cần làm | Artefacts đầu ra
+Pha 1 | Chuẩn bị dữ liệu nền và sinh benchmark stream | Dataset đã gắn ground truth, event time, ingestion time
+Pha 2 | Chạy toàn bộ baselines và WAVES-Full trên cùng cấu hình phần cứng | Log runtime, metrics thô, alert streams
+Pha 3 | Tổng hợp kết quả theo RQ | Bảng so sánh, biểu đồ, phần diễn giải
+Pha 4 | Chạy sensitivity analysis | Biểu đồ trade-off và cấu hình khuyến nghị
+
+
+[TABLE 13]
+RQ | Kết quả kỳ vọng | Dấu hiệu thành công
+RQ1 | WAVES vượt NL-Stream về throughput và giữ P99 ổn định hơn Single-Tree. | Đường throughput cao và phẳng; ít latency spikes.
+RQ2 | WAVES giữ Precision và F1 cao hơn Static-Box và Buffer-Wait trong dữ liệu có drift + late data. | False positives giảm mạnh; detection latency thấp.
+RQ3 | WAVES mở rộng tốt hơn khi tăng số luật lên 50–100. | RAM tăng chậm; throughput không suy sụp.
+RQ4 | Tồn tại vùng tham số tối ưu thay vì một cực trị duy nhất. | Biểu đồ sensitivity thể hiện vùng cân bằng rõ ràng.
+
+
+
+================================================================================
+FILE: problem_statement&scope.docx
+================================================================================
+TÀI LIỆU KỸ THUẬT
+Problem Statement / Scope
+Phát hiện logical data quality violations trên data stream
+1. Problem Statement / Scope
+Phần này xác định rõ bài toán, mục tiêu, đầu vào, đầu ra và ranh giới của hệ thống nhằm bảo đảm quá trình thiết kế bám đúng trọng tâm kỹ thuật của luồng xử lý streaming.
+1.1. Bài toán và mục tiêu
+Hệ thống cần giải quyết bài toán phát hiện logical data quality violations trên data stream. Trọng tâm không phải là các kiểm tra cú pháp đơn lẻ, mà là các lỗi logic phức tạp cần đối chiếu chéo giữa nhiều record trong cùng ngữ cảnh thời gian.
+Phát hiện được lỗi logic phức tạp trong luồng dữ liệu gần thời gian thực.
+Xử lý dữ liệu thay đổi liên tục theo window, không coi stream như các batch nhỏ nối tiếp.
+Duy trì cách nhìn stateful trên cửa sổ đang hoạt động, thay vì tính lại toàn bộ từ đầu mỗi khi window dịch chuyển.
+Hạn chế false alert do dữ liệu đến muộn hoặc sai thứ tự bằng cơ chế đánh giá theo watermark.
+1.2. Các khó khăn chính
+Khó khăn 1 - Full scan chéo rất tốn
+Nếu so từng cặp bản ghi để kiểm tra constraint, chi phí xử lý tăng rất nhanh theo số record trong window.
+Khi kích thước window lớn, cách làm brute-force dễ dẫn tới độ phức tạp O(N^2), gây áp lực lớn lên CPU, bộ nhớ và độ trễ hệ thống.
+Khó khăn 2 - Window overlap gây tính lại
+Window trượt khiến phần lớn dữ liệu cũ vẫn còn tồn tại trong window mới.
+Nếu mỗi lần window dịch chuyển đều tính lại từ đầu, hệ thống sẽ lặp lại rất nhiều phép kiểm tra không cần thiết và làm lãng phí tài nguyên.
+Khó khăn 3 - Late / out-of-order data gây false alert
+Trong thực tế, dữ liệu có thể đến muộn hoặc sai thứ tự do mạng, nguồn phát hoặc pipeline trung gian.
+Nếu kết luận quá sớm khi dữ liệu chưa đến đủ, hệ thống có thể phát sinh cảnh báo sai.
+Vì vậy cần cơ chế chờ, giữ trạng thái tạm thời và đánh giá lại trước khi chốt alert cuối cùng.
+Khó khăn 4 - Báo động giả do luật tĩnh (Rigid Rules & Concept Drift)
+Nếu sử dụng các ngưỡng vi phạm cố định, ví dụ chênh lệch thời gian lớn hơn 5 phút, hệ thống có thể sinh ra hàng loạt false positive khi ngữ cảnh vận hành thay đổi như mưa lớn, kẹt xe hoặc biến động bất thường trong luồng dữ liệu.
+Vì vậy hệ thống cần một cơ chế tự thích nghi, có thể tự động nới lỏng hoặc thắt chặt luật kiểm tra theo độ phân tán và xu hướng dữ liệu thời gian thực mà không làm gián đoạn luồng xử lý.
+Khó khăn 5 - Sự cạn kiệt tài nguyên khi xử lý đa luật (Multi-rule Overhead)
+Trong thực tế, hệ thống thường phải chạy đồng thời nhiều denial constraints. Nếu mỗi luật xây dựng một KD-Tree riêng, bộ nhớ sẽ tăng rất nhanh và khó duy trì khi số luật mở rộng.
+Ngược lại, nếu gộp toàn bộ thuộc tính của nhiều luật vào một cây quá lớn, hệ thống sẽ gặp lời nguyền số chiều, làm suy giảm khả năng cắt tỉa của KD-Tree và khiến tốc độ tra cứu tiến gần về quét tuyến tính.
+Do đó cần một cơ chế gom nhóm luật và tổ chức tra cứu chia sẻ để tái sử dụng cấu trúc chỉ mục mà vẫn giữ được hiệu quả truy vấn.
+1.3. Đầu vào, đầu ra và phạm vi
+Đầu vào
+Stream events.
+Các record theo thời gian.
+Các rule / denial constraints cần kiểm tra.
+Đầu ra
+Quality meta-stream.
+Violation alerts.
+Trạng thái provisional / final nếu có.
+Phạm vi hệ thống
+Tập trung vào window-based streaming DQ.
+Tập trung vào logical violations, incremental checking, watermark-aware alerting.
+Ngoài phạm vi
+Không đi sâu vào dashboard / UI.
+Không mở rộng sang batch analytics dài hạn.
+Không xử lý mọi loại data quality dimension ngoài phần liên quan trực tiếp tới flow này.
+Tóm tắt phạm vi
+
+[TABLE 1]
+Tài liệu này bám đúng sườn “Problem Statement / Scope”, sử dụng thêm ý từ Report để làm rõ nội dung nhưng không mở rộng sang phần ngoài phạm vi.
+
+
+[TABLE 2]
+Phạm vi | Logical violations, incremental checking, watermark-aware alerting
+Đầu vào | Stream events và rule / denial constraints
+Đầu ra | Quality meta-stream, violation alerts, trạng thái provisional / final
+
+
+[TABLE 3]
+Ý nghĩa kỹ thuật: hệ thống phải vừa đủ nhanh để theo kịp stream, vừa đủ chính xác để không chốt nhầm vi phạm khi dữ liệu chưa đến đầy đủ.
+
+
+[TABLE 4]
+Nhóm | Nội dung
+Đầu vào | Stream events; các record theo thời gian; các rule / denial constraints cần kiểm tra.
+Đầu ra | Quality meta-stream; violation alerts; trạng thái provisional / final nếu có.
+Trong phạm vi | Window-based streaming DQ; logical violations; incremental checking; watermark-aware alerting.
+Ngoài phạm vi | Dashboard / UI; batch analytics dài hạn; các DQ dimension khác ngoài phần liên quan trực tiếp tới flow này.
+
+
+
+================================================================================
+FILE: cauhoi.docx
+================================================================================
+BỘ CÂU HỎI PHẢN BIỆN HOÀN CHỈNH
+Dùng cho phần defense / bảo vệ kiến trúc WAVES
+1. Câu hỏi nền tảng: Vì sao WAVES phải phức tạp hơn cách làm cơ bản?
+Câu hỏi 1. Tại sao không dùng JOIN hoặc vòng lặp để kiểm tra chéo mà phải dùng Rapidash / KD-Tree?
+Ý trả lời ngắn: Vì kiểm tra chéo kiểu truyền thống sẽ rơi vào O(N^2). Với cửa sổ 10.000 bản ghi, hệ thống phải xử lý khoảng 100 triệu cặp so sánh, rất dễ gây backpressure và sập luồng.
+Luận điểm triển khai:
+• Rapidash biến luật logic thành các hộp truy vấn trong không gian đa chiều, rồi dùng KD-Tree để bỏ qua các vùng chắc chắn không thể chứa vi phạm.
+• Điểm cốt lõi không phải là "làm sang", mà là thay đổi bản chất chi phí tính toán: từ quét cạn sang truy vấn có cắt tỉa.
+• Đây là lớp phòng thủ đầu tiên để giữ throughput khi số bản ghi trong cửa sổ tăng mạnh.
+Câu hỏi 2. Tại sao phải dùng Pane-based Forest thay vì duy trì một KD-Tree lớn duy nhất?
+Ý trả lời ngắn: Vì xóa dữ liệu cũ trong KD-Tree là thao tác khó và đắt. Nếu cứ xóa từng lá khi cửa sổ trượt, cây sẽ mất cân bằng, tốc độ truy vấn giảm mạnh và hệ thống phải rebuild.
+Luận điểm triển khai:
+• WAVES chia cửa sổ thành nhiều lát thời gian; mỗi lát tương ứng với một cây nhỏ, gần như tĩnh.
+• Khi dữ liệu cũ hết hạn, hệ thống chỉ loại bỏ cả cây cũ nhất bằng thao tác cắt tham chiếu O(1), thay vì đi sâu vào cây để xóa từng nút.
+• Thiết kế này giữ cho độ trễ phẳng hơn, tránh các đỉnh giật lag do rebuild.
+Câu hỏi 3. Tại sao cần Elastic Bounding Box với EMA, sao không đặt ngưỡng cố định?
+Ý trả lời ngắn: Vì ngưỡng cố định chỉ đúng trong ngữ cảnh ổn định. Khi môi trường thay đổi đột ngột, luật tĩnh sẽ tạo ra false positive hàng loạt.
+Luận điểm triển khai:
+• EMA liên tục cập nhật thống kê ngữ cảnh như độ phân tán hoặc phương sai của dữ liệu đang chảy vào.
+• Khi hệ thống nhận ra giao thông đang hỗn loạn hoặc độ biến động tăng, hộp truy vấn sẽ tự nới rộng để tránh kết luận oan.
+• Như vậy, WAVES không bỏ luật; WAVES giữ luật nhưng làm cho luật thích nghi với concept drift.
+Câu hỏi 4. Tại sao phải có Shared Indexing và Batched Traversal cho nhiều luật?
+Ý trả lời ngắn: Vì doanh nghiệp không chạy một luật duy nhất. Nếu mỗi luật có một cây riêng thì RAM và CPU tăng rất nhanh; nếu gộp tất cả vào một cây quá nhiều chiều thì KD-Tree mất hiệu quả cắt tỉa.
+Luận điểm triển khai:
+• WAVES gom các luật có quan hệ thuộc tính gần nhau thành các cụm nhỏ, đủ để dùng chung chỉ mục mà chưa rơi vào curse of dimensionality.
+• Khi duyệt cây, hệ thống mang theo nhiều hộp truy vấn cùng lúc thay vì lặp lại hành trình nhiều lần.
+• Nhờ vậy, hệ thống scale lên nhiều luật nhưng không nhân chi phí theo kiểu tuyến tính thô.
+Câu hỏi 5. Tại sao phải dùng Tombstone và Retraction Stream thay vì chờ watermark rồi mới kết luận?
+Ý trả lời ngắn: Vì nếu chờ đủ lâu thì mất real-time; nhưng nếu kết luận ngay thì dễ báo oan khi dữ liệu đến trễ hoặc lệch thứ tự.
+Luận điểm triển khai:
+• WAVES cho phép phát cảnh báo tạm thời ngay khi thấy dấu hiệu bất thường.
+• Nếu sau đó có dữ liệu đến muộn làm thay đổi kết luận, hệ thống phát bản rút lại để sửa sai.
+• Tombstone giúp các đối tượng đã bị bác bỏ hoặc đã được xử lý không tiếp tục làm nhiễu quá trình tra cứu sau đó.
+2. Câu hỏi kỹ thuật đào sâu
+Câu hỏi 6. Insert và delete trong KD-Tree có độ phức tạp ra sao?
+Ý trả lời ngắn: Insert thường ở mức O(log N) trong trường hợp trung bình, nhưng delete là điểm yếu lớn vì xóa một nút giữa cây có thể kéo theo tìm phần tử thay thế trong nhánh con. Trong ngữ cảnh streaming, nếu cứ liên tục xóa vật lý trên một cây lớn thì hệ thống rất dễ suy thoái.
+Luận điểm triển khai:
+• Đây là lý do WAVES không chọn chiến lược 'một cây lớn rồi insert/delete mãi mãi'.
+• Kiến trúc pane-based né đúng điểm yếu cấu trúc của KD-Tree thay vì cố chấp chống lại nó.
+Câu hỏi 7. Một KD-Tree duy nhất có thể trở thành bottleneck cho cả luồng không?
+Ý trả lời ngắn: Có. Khi dữ liệu vào ra liên tục theo thời gian, cây rất dễ mất cân bằng. Khi đó tốc độ truy vấn từ gần logarit có thể rơi về gần tuyến tính, buộc hệ thống phải rebuild với chi phí cao và gây latency spike.
+Luận điểm triển khai:
+• Nếu có rebuild, luồng chính có nguy cơ bị block.
+• Vì vậy, vấn đề không chỉ là độ phức tạp trung bình, mà còn là tính ổn định theo thời gian vận hành dài.
+Câu hỏi 8. WAVES quản lý vòng đời bộ nhớ như thế nào để không bị phình RAM?
+Ý trả lời ngắn: WAVES không giữ một cấu trúc khổng lồ duy nhất. Nó dùng hash theo phân vùng nhỏ, và trong mỗi phân vùng là một mảng các cây theo lát thời gian. Khi dữ liệu cũ hết hạn, hệ thống bỏ cả cây cũ nhất thay vì xóa từng bản ghi.
+Luận điểm triển khai:
+• Cách này làm quy trình dọn rác đơn giản hơn nhiều.
+• Nó cũng giúp bộ nhớ có vòng đời rõ ràng, dễ kiểm soát và ít gây giật hơn.
+Câu hỏi 9. Nếu dữ liệu liên tục đi vào, vì sao chỉ thêm ở cây hiện hành và bỏ cây cũ vẫn đảm bảo đúng?
+Ý trả lời ngắn: Vì tính đúng đắn được buộc theo cửa sổ thời gian. Mỗi cây đại diện cho một lát của cửa sổ; khi lát đó còn nằm trong cửa sổ, nó vẫn tham gia truy vấn. Khi lát rời cửa sổ, bỏ hẳn cây đó là đúng theo ngữ nghĩa cửa sổ.
+Luận điểm triển khai:
+• Đây là cách duy trì đúng semantics của sliding window mà không cần delete vật lý từng điểm.
+• Chi phí bảo trì vì thế ổn định hơn so với cây động hoàn toàn.
+Câu hỏi 10. Khi duyệt cây, hệ thống lấy gì làm mốc để quyết định cắt nhánh?
+Ý trả lời ngắn: Hệ thống không chọn 'ai đúng ai sai' giữa dữ liệu trong cây và hộp truy vấn. Nó chỉ kiểm tra giao cắt hình học giữa vùng không gian của nút và hộp truy vấn sinh ra từ bản ghi mới. Nếu hai vùng không giao nhau thì nhánh đó chắc chắn không chứa vi phạm, nên được cắt bỏ.
+Luận điểm triển khai:
+• Bản chất của Rapidash là biến kiểm tra logic thành toán học hình học.
+• Nhờ vậy, CPU chỉ đi vào những vùng còn khả năng chứa đối tượng vi phạm.
+Câu hỏi 11. Thêm luồng Logical DC có làm hệ thống nặng hơn không, và có đáng đánh đổi không?
+Ý trả lời ngắn: Có, chi phí xử lý chắc chắn tăng so với các kiểm tra thống kê O(1). Nhưng đổi lại, hệ thống bắt được các lỗi nghiệp vụ và gian lận mà kiểm tra kiểu null/max/min hoàn toàn không thấy.
+Luận điểm triển khai:
+• Đây là đánh đổi có giá trị kinh tế thực tế: tốn thêm xử lý để bắt lỗi doanh nghiệp có tác động lớn.
+• Không có luồng logical thì hệ thống chỉ dừng ở mức kiểm tra bề mặt.
+Câu hỏi 12. Ngữ nghĩa của late-arrival DC trong WAVES là gì?
+Ý trả lời ngắn: WAVES theo đuổi ngữ nghĩa 'đúng dần theo thời gian'. Ở thời điểm hiện tại, hệ thống phát cảnh báo dựa trên thông tin đang có. Nếu dữ liệu muộn đến và thay đổi bức tranh, hệ thống phát retraction để sửa kết luận trước đó.
+Luận điểm triển khai:
+• Đây là mô hình phản ứng nhanh nhưng biết tự sửa sai.
+• Nó phù hợp hơn với streaming thực tế so với hai thái cực: chờ quá lâu hoặc kết luận cứng nhắc.
+Câu hỏi 13. Tại sao các tool data quality hiện nay chưa làm theo hướng này?
+Ý trả lời ngắn: Vì bài toán nằm ở giao điểm rất khó giữa kiểm tra logic, chỉ mục không gian đa chiều, và semantics của stream. Phần lớn tool hiện nay xuất phát từ thế giới batch, nên khi sang streaming họ chủ yếu giữ các kiểm tra cơ bản và tránh kiểm tra chéo nặng.
+Luận điểm triển khai:
+• Khoảng trống nghiên cứu nằm ở chỗ kết hợp được chỉ mục kiểu Rapidash với vận hành cửa sổ và late data.
+• WAVES chọn kiến trúc để khắc phục đúng nút thắt lịch sử đó.
+Câu hỏi 14. Watermark có làm chậm luồng và chậm gửi alert không?
+Ý trả lời ngắn: Không nhất thiết. Trong thiết kế này, watermark không phải là thứ chặn luồng chính để chờ đủ dữ liệu rồi mới xử lý. Nó chủ yếu đóng vai trò đóng sổ, dọn rác và chuyển trạng thái từ tạm thời sang cuối cùng.
+Luận điểm triển khai:
+• Luồng chính vẫn có thể phát alert tạm thời ngay khi phát hiện nghi ngờ.
+• Watermark giúp đảm bảo tính nhất quán cuối, chứ không bắt buộc phải làm tăng detection latency.
+3. Mẫu chốt hạ ngắn khi hội đồng hỏi tổng quát
+• WAVES không phức tạp vì muốn phức tạp; nó phức tạp vì mỗi lớp đều vá một điểm sụp đổ chắc chắn xảy ra trong streaming thực tế.
+• Bỏ bất kỳ lớp nào thì hệ thống sẽ chết ở một mặt: O(N^2), delete/rebuild, false positive, scale đa luật, hoặc late data. Mục tiêu cuối cùng là giữ đồng thời throughput cao, alert sớm, và tính đúng đắn cuối.
+4. Câu hỏi về bối cảnh doanh nghiệp & giá trị triển khai thực tế
+Câu hỏi 15. Trong doanh nghiệp thực tế, Denial Constraints (DCs) hiện nay thường được kiểm tra ở bước nào?
+Ý trả lời ngắn: Trong đa số hệ thống hiện nay, DC vẫn chủ yếu bị đẩy về batch ở tầng warehouse hoặc lakehouse, thay vì được kiểm tra ngay trên luồng streaming.
+Luận điểm triển khai:
+• Ở tầng Kafka, Flink hoặc streaming engine tương đương, doanh nghiệp thường chỉ chạy basic checks như null, format, schema, range hoặc value validity.
+• Dữ liệu sau đó vẫn được đổ xuống Data Lake, Lakehouse hoặc Warehouse, dù bên trong có thể đã chứa lỗi logic chéo dòng.
+• Đến cuối ngày hoặc theo lịch, họ mới dùng dbt, Great Expectations, Apache Airflow hoặc các job SQL lớn với JOIN và GROUP BY để quét lại toàn bộ dữ liệu đã hạ cánh.
+• Lý do cốt lõi là chi phí kiểm tra chéo rất đắt; nếu ép hệ thống stream xử lý DC theo kiểu JOIN trực tiếp mà không có chỉ mục và cơ chế cắt tỉa phù hợp, CPU, RAM và latency sẽ tăng mạnh.
+Điểm nhớ nhanh: basic checks thường ở streaming; DC chéo dòng nặng thường bị đẩy về batch.
+Câu hỏi 16. Tại sao doanh nghiệp lại cần kiểm tra DC ngay trên luồng stream thay vì chờ batch ban đêm?
+Ý trả lời ngắn: Vì kiểm tra sớm giúp chặn lỗi trước khi nó lan sang AI, pricing, matching, dashboard và warehouse; sửa ở cửa khẩu streaming luôn rẻ hơn sửa sau khi dữ liệu đã phát tán.
+Luận điểm triển khai:
+• Đây chính là tinh thần Shift-Left Data Quality: kéo bước phát hiện lỗi về gần nơi dữ liệu phát sinh nhất, thay vì chờ đến cuối pipeline mới phản ứng.
+• Các hệ thống AI, dynamic pricing, recommendation, fraud scoring và match-making đều phản ứng real-time; dữ liệu sai có thể lập tức kích hoạt quyết định sai và tạo automated cascading failures.
+• Một bản ghi lỗi khi đã chảy vào warehouse hoặc lake rất dễ lan sang dashboard, feature store, mô hình ML và các pipeline downstream; lúc đó remediation cost tăng lên đáng kể vì phải truy vết, xóa, cập nhật và đồng bộ lại nhiều nơi.
+• Nếu phát hiện ngay trên luồng, hệ thống còn có thể block, quarantine, fallback hoặc yêu cầu thiết bị và ứng dụng gửi lại dữ liệu mới mà không làm gián đoạn trải nghiệm người dùng.
+Điểm nhớ nhanh: Shift-Left DQ = bắt lỗi trước khi lỗi lan sang hệ thống quyết định và hạ tầng downstream.
+Câu hỏi 17. Có ví dụ thực tế nào cho thấy sự khác biệt giữa phát hiện ban đêm và phát hiện real-time không?
+Ý trả lời ngắn: Có. Một ví dụ rất điển hình là bài toán phát hiện GPS spoofing trong taxi, ride-hailing hoặc giao đồ ăn: batch chỉ phát hiện sau khi thiệt hại đã xảy ra, còn streaming real-time có thể chặn ngay tại thời điểm bất thường xuất hiện.
+Luận điểm triển khai:
+• Luật DC ví dụ: với cùng một tài xế, nếu hai sự kiện GPS chỉ cách nhau 10 giây thì khoảng cách tọa độ không thể vượt quá ngưỡng vật lý hợp lý trong đô thị. Đây là lỗi chéo dòng vì phải so sánh bản ghi hiện tại với bản ghi trước đó trong cửa sổ thời gian.
+• Nếu làm theo kiểu batch, lúc 08:00 gian lận xảy ra, cuốc xe và phần thưởng sai vẫn được ghi nhận; đến nửa đêm hệ thống mới chạy SQL để phát hiện; sáng hôm sau đội vận hành mới hoàn tiền, xử lý tài khoản và khắc phục hậu quả.
+• Nếu làm với WAVES, ngay khi bản tin mới đi qua luồng, hệ thống dùng chỉ mục không gian để tra cứu bản ghi trước đó trong cửa sổ, phát hiện vi phạm DC và bắn provisional alert gần như tức thời; hệ thống điều phối có thể đóng băng tài khoản hoặc chặn cuốc xe ngay lập tức.
+• Nếu sau đó có late event hoặc gói tin đính chính làm thay đổi kết luận, WAVES phát retraction để rút cảnh báo và mở khóa lại tự động. Nhờ vậy, hệ thống vừa phản ứng nhanh vừa không quá cứng nhắc trước dữ liệu đến muộn.
+Điểm nhớ nhanh: batch phát hiện sau khi thiệt hại đã xảy ra; streaming cho phép chặn sớm và tự sửa bằng retraction.
+
+[TABLE 1]
+Mục đích sử dụng
+
+• Tài liệu này chuyển phần ghi chú phòng thủ thành bộ câu hỏi hoàn chỉnh, có thể dùng trực tiếp khi luyện phản biện với hội đồng.
+• Mỗi câu hỏi đều có: trọng tâm phản biện, ý trả lời ngắn, và luận điểm sâu để triển khai khi bị hỏi vặn thêm.
+
+
+[TABLE 2]
+Nâng cấp | Nếu không có | Giá trị bảo vệ
+Rapidash / KD-Tree | JOIN hoặc quét chéo O(N^2), nghẽn CPU | Giữ throughput cao nhờ pruning không gian
+Pane-based Forest | Xóa lá khó, cây suy thoái, latency spike | Dọn rác O(1), độ trễ ổn định
+Elastic Box + EMA | Luật tĩnh gây false positive hàng loạt | Tự thích nghi với concept drift
+Shared Indexing | Nhiều luật làm tràn RAM hoặc curse of dimensionality | Scale lên nhiều luật với chi phí thấp hơn
+Tombstone + Retraction | Hoặc báo oan, hoặc chờ lâu mất real-time | Vừa cảnh báo sớm vừa tự sửa sai
+
+
+[TABLE 3]
+Từ khóa chốt: O(N^2) -> pruning không gian -> throughput.
+
+
+[TABLE 4]
+Từ khóa chốt: delete khó -> pane hóa -> garbage collection O(1).
+
+
+[TABLE 5]
+Từ khóa chốt: concept drift -> EMA -> tự thích nghi.
+
+
+[TABLE 6]
+Từ khóa chốt: nhiều luật thực tế -> grouping -> box dropping.
+
+
+[TABLE 7]
+Từ khóa chốt: low latency + eventual consistency.
+
+
+[TABLE 8]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 9]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 10]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 11]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 12]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 13]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 14]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 15]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+
+[TABLE 16]
+Điểm nhớ nhanh: trả lời theo ba ý — vấn đề, hậu quả, cơ chế bảo vệ.
+
+

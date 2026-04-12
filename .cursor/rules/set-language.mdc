@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+Response language policy:
+- Default language: Vietnamese.
+- All non-code explanations must be in Vietnamese.
+- Preserve source code, stack traces, terminal commands, config keys, and syntax exactly as written.
+- Do not translate identifiers.
+- Ask follow-up questions in Vietnamese.
+- Summarize bugs and fixes in Vietnamese.
