@@ -6,6 +6,38 @@
 
 ## Changelog
 
+### 2026-04-12 — Phase 2.5: SharedRuleOptimizer
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+- `waves/optimizer/config.py` — OptimizerConfig (k_max, infinite_padding, static_bounds), NYC_TAXI_BOUNDS
+- `waves/optimizer/dc_parser.py` — Predicate, PredicateType, DCParser, EnrichedDC, strip_side_prefix
+- `waves/optimizer/grouper.py` — GroupMetadata, GreedyRuleGrouper, ActiveBox, build_active_boxes
+- `waves/optimizer/__init__.py` — Export all 11 symbols
+- `tests/unit/test_optimizer.py` — 44 unit tests, 44/44 pass
+
+**Modules đã implement:**
+- 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
+- 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
+- 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
+- 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, unit tests 35/35 pass)
+- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
+- 2.6 rapidash (placeholder)
+- 2.7 weever (placeholder)
+- 2.8 decision (placeholder)
+- 2.9 tombstone (placeholder)
+- 2.10 late_handler (placeholder)
+- 2.11 output (placeholder)
+- 2.11b store (placeholder)
+- 2.11c pipeline (placeholder)
+
+**Scripts thực tế:**
+- scripts/prepare_benchmark.py (placeholder)
+- scripts/inject_fraud.py (placeholder)
+
+---
+
 ### 2026-04-12 — Phase 2.4: LogicalEngine
 
 **Trạng thái:** Hoàn thành
@@ -21,7 +53,7 @@
 - 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
 - 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
 - 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, process_event pipeline, unit tests 35/35 pass)
-- 2.5 optimizer (placeholder)
+- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
 - 2.6 rapidash (placeholder)
 - 2.7 weever (placeholder)
 - 2.8 decision (placeholder)
@@ -51,7 +83,7 @@
 - 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
 - 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
 - 2.4 logical_engine ✅ (engine: EMA, ElasticBox, unit tests 35/35 pass)
-- 2.5 optimizer (placeholder)
+- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
 - 2.6 rapidash (placeholder)
 - 2.7 weever (placeholder)
 - 2.8 decision (placeholder)
@@ -84,7 +116,7 @@
 - 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
 - 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
 - 2.4 logical_engine ✅ (engine: EMA, ElasticBox, unit tests 35/35 pass)
-- 2.5 optimizer (placeholder)
+- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
 - 2.6 rapidash (placeholder)
 - 2.7 weever (placeholder)
 - 2.8 decision (placeholder)
@@ -118,7 +150,7 @@
 - [x] 2.2 WindowManager
 - [x] 2.3 BasicDQChecks
 - [x] 2.4 LogicalEngine
-- [ ] 2.5 SharedRuleOptimizer
+- [x] 2.5 SharedRuleOptimizer
 - [ ] 2.6 Rapidash
 - [ ] 2.7 Weever
 - [ ] 2.8 Watermark/Decision
