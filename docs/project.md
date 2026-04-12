@@ -6,40 +6,49 @@
 
 ## Changelog
 
-### 2026-04-12 — Phase 2.10/2.11b: LateHandler + EventStore
+### 2026-04-13 — Phase 2.10/2.11/2.11b/2.11c: LateHandler + EventStore + AlertOutput + Pipeline
 
 **Trạng thái:** Hoàn thành
 
 **Thay đổi:**
 
+Phase 2.11b — EventStore:
 - `waves/store/event_store.py` — EventStore (event_id→DataEvent, pane_id, window_id), put/get/get_pane_id/get_window_id/has/count/clear
 - `waves/store/__init__.py` — Export EventStore
-- `waves/late_handler/handler.py` — LateHandlerConfig (wait_for_late_seconds, window_config), handle_late_event (5-step: threshold check → find alerts → retract → pane_insert → re-check), late_event_invalidate_check (DC predicate evaluation for s-side matched_event, t-side late_event), _parse_window_end, _extract_point, _evaluate_predicate
-- `waves/late_handler/__init__.py` — Export LateHandlerConfig, handle_late_event, late_event_invalidate_check
 - `tests/unit/test_store.py` — 16 tests
+
+Phase 2.10 — LateHandler:
+- `waves/late_handler/handler.py` — LateHandlerConfig, handle_late_event (5-step), late_event_invalidate_check, _parse_window_end, _extract_point, _evaluate_predicate
+- `waves/late_handler/__init__.py` — Export LateHandlerConfig, handle_late_event, late_event_invalidate_check
 - `tests/unit/test_late_handler.py` — 30 tests
 
-**Bug fix trong quá trình implement:**
-- `late_event_invalidate_check`: đảo đúng logic `right_source = late_event if right_side == "t" else matched_event` — trước đó luôn lấy matched_event cho cả hai vế
-- `Predicate.operator` (không phải `predicate_type`)
-- `traverse_node` trả về tuple `(candidates, visited, pruned)`, không phải object
+Phase 2.11 — AlertOutput:
+- `waves/output/alert_output.py` — AlertEvent (event_type: provisional/final/retraction), AlertOutput (emit + emit_meta + sinks + history)
+- `waves/output/__init__.py` — Export AlertEvent, AlertOutput
+- `waves/__init__.py` — Add AlertEvent, AlertOutput
+- `tests/unit/test_output.py` — 19 tests
+
+Phase 2.11c — Pipeline:
+- `waves/pipeline/pipeline.py` — PipelineConfig (window, late, optimizer, sink), WavePipeline (wires all modules: process/DataEvent, process_late, finalize_window, cleanup, emit_meta, build_window_meta)
+- `waves/pipeline/__init__.py` — Export PipelineConfig, WavePipeline
+- `tests/unit/test_pipeline.py` — 18 tests
 
 **Modules đã implement:**
 - 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
 - 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
 - 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
 - 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, unit tests 35/35 pass)
-- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
-- 2.6 rapidash ✅ (kdtree: KDTreeNode/bulk_load/range_query; traversal: BatchedTraversal/traverse_node/Intersects/point_in_box; candidate: CandidateViolation/BatchedTraversalResult; unit tests 60/60 pass)
+- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser; grouper; unit tests 44/44 pass)
+- 2.6 rapidash ✅ (kdtree: KDTreeNode/bulk_load; traversal: traverse_node/BatchedTraversal; unit tests 60/60 pass)
 - 2.7 weever ✅ (PaneForest: pane_insert/pane_close/window_slide; unit tests 25/25 pass)
-- 2.8 decision ✅ (AlertStateStore: put/get/delete/retract/indexes; process_candidate/finalize_window/retract_alert/cleanup_expired; unit tests 35/35 pass)
-- 2.9 tombstone ✅ (TombstoneFilter/TombstoneManager: create/drop/add/contains; unit tests 13/13 pass)
-- 2.10 late_handler ✅ (handle_late_event: 5-step late event flow; late_event_invalidate_check; unit tests 30/30 pass)
-- 2.11 output (placeholder)
-- 2.11b store ✅ (EventStore: event_id→DataEvent/pane_id/window_id; unit tests 16/16 pass)
-- 2.11c pipeline (placeholder)
+- 2.8 decision ✅ (AlertStateStore; process_candidate/finalize_window/retract_alert/cleanup_expired; unit tests 35/35 pass)
+- 2.9 tombstone ✅ (TombstoneFilter/TombstoneManager; unit tests 13/13 pass)
+- 2.10 late_handler ✅ (handle_late_event 5-step; unit tests 30/30 pass)
+- 2.11 output ✅ (AlertOutput: emit/emit_meta/sinks/history; unit tests 19/19 pass)
+- 2.11b store ✅ (EventStore; unit tests 16/16 pass)
+- 2.11c pipeline ✅ (WavePipeline: wires all modules; unit tests 18/18 pass)
 
-**Tổng test: 333/333 pass**
+**Tổng test: 370/370 pass** ✅
 
 **Scripts thực tế:**
 - scripts/prepare_benchmark.py (placeholder)
@@ -216,10 +225,10 @@
 - [x] 2.8 Watermark/Decision
 - [x] 2.9 Tombstone
 - [x] 2.10 LateHandler
-- [ ] 2.11 AlertOutput
+- [x] 2.11 AlertOutput
 - [x] 2.11b EventStore
-- [ ] 2.11c Pipeline
-- [x] 2.12 Unit tests per module (333 tests, 333/333 pass)
+- [x] 2.11c Pipeline
+- [x] 2.12 Unit tests per module (370 tests, 370/370 pass)
 - [ ] 2.13 Integration tests
 
 ### Phase 3: Dữ liệu
