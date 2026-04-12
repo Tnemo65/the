@@ -6,49 +6,42 @@
 
 ## Changelog
 
-### 2026-04-13 — Phase 2.10/2.11/2.11b/2.11c: LateHandler + EventStore + AlertOutput + Pipeline
+### 2026-04-13 — Phase 2.13: Integration Tests
 
 **Trạng thái:** Hoàn thành
 
 **Thay đổi:**
 
-Phase 2.11b — EventStore:
-- `waves/store/event_store.py` — EventStore (event_id→DataEvent, pane_id, window_id), put/get/get_pane_id/get_window_id/has/count/clear
-- `waves/store/__init__.py` — Export EventStore
-- `tests/unit/test_store.py` — 16 tests
+- `tests/integration/test_end_to_end.py` — 14 integration tests: DC1 (fare-distance dominance), DC3 (toll route anomaly), batched traversal, alert state lifecycle, pane forest, tombstone, EMA, meta stream
+- `tests/integration/test_late_retraction.py` — 18 integration tests: late event threshold, alert retraction, state transitions, event store integration, tombstone lifecycle, cleanup expired alerts, output sink
+- Renamed: `tests/integration/test_pipeline.py` → `tests/integration/test_end_to_end.py` (tránh trùng tên với `tests/unit/test_pipeline.py`)
 
-Phase 2.10 — LateHandler:
-- `waves/late_handler/handler.py` — LateHandlerConfig, handle_late_event (5-step), late_event_invalidate_check, _parse_window_end, _extract_point, _evaluate_predicate
-- `waves/late_handler/__init__.py` — Export LateHandlerConfig, handle_late_event, late_event_invalidate_check
-- `tests/unit/test_late_handler.py` — 30 tests
+**Bug fix phát hiện trong integration tests:**
+- `DCParser.parse()` method không tồn tại → dùng `parse_dc_rules()` thay thế
+- `BasicDQChecker.check()` không tồn tại → dùng `check_event()` thay thế
+- `PaneForest.pane_close()` cần `dim_count`, `lo_bounds`, `hi_bounds` (không phải 0 args)
+- `LogicalEngine.update()` không tồn tại → dùng `process_event(event_attrs, dc_rules)` thay thế
+- `AlertStateStore.get_by_event()` không tồn tại → dùng `get_by_event_id()` thay thế
+- `TombstoneManager.add()` silently skips nếu pane chưa được tạo → cần gọi `create_pane()` trước
+- `traverse_node` dùng `event_store.get_pane_id(event_id)` để check tombstone → event cần được đăng ký trong event_store với pane_id trước khi traversal
 
-Phase 2.11 — AlertOutput:
-- `waves/output/alert_output.py` — AlertEvent (event_type: provisional/final/retraction), AlertOutput (emit + emit_meta + sinks + history)
-- `waves/output/__init__.py` — Export AlertEvent, AlertOutput
-- `waves/__init__.py` — Add AlertEvent, AlertOutput
-- `tests/unit/test_output.py` — 19 tests
-
-Phase 2.11c — Pipeline:
-- `waves/pipeline/pipeline.py` — PipelineConfig (window, late, optimizer, sink), WavePipeline (wires all modules: process/DataEvent, process_late, finalize_window, cleanup, emit_meta, build_window_meta)
-- `waves/pipeline/__init__.py` — Export PipelineConfig, WavePipeline
-- `tests/unit/test_pipeline.py` — 18 tests
+**Tổng test: 400/400 pass** ✅
 
 **Modules đã implement:**
-- 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
-- 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
-- 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
-- 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, unit tests 35/35 pass)
-- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser; grouper; unit tests 44/44 pass)
-- 2.6 rapidash ✅ (kdtree: KDTreeNode/bulk_load; traversal: traverse_node/BatchedTraversal; unit tests 60/60 pass)
-- 2.7 weever ✅ (PaneForest: pane_insert/pane_close/window_slide; unit tests 25/25 pass)
-- 2.8 decision ✅ (AlertStateStore; process_candidate/finalize_window/retract_alert/cleanup_expired; unit tests 35/35 pass)
-- 2.9 tombstone ✅ (TombstoneFilter/TombstoneManager; unit tests 13/13 pass)
-- 2.10 late_handler ✅ (handle_late_event 5-step; unit tests 30/30 pass)
-- 2.11 output ✅ (AlertOutput: emit/emit_meta/sinks/history; unit tests 19/19 pass)
-- 2.11b store ✅ (EventStore; unit tests 16/16 pass)
-- 2.11c pipeline ✅ (WavePipeline: wires all modules; unit tests 18/18 pass)
-
-**Tổng test: 370/370 pass** ✅
+- 2.1 ingestion ✅ (unit tests 15/15 pass)
+- 2.2 windowing ✅ (unit tests 26/26 pass)
+- 2.3 basic_dq ✅ (unit tests 27/27 pass)
+- 2.4 logical_engine ✅ (unit tests 35/35 pass)
+- 2.5 optimizer ✅ (unit tests 44/44 pass)
+- 2.6 rapidash ✅ (unit tests 60/60 pass)
+- 2.7 weever ✅ (unit tests 25/25 pass)
+- 2.8 decision ✅ (unit tests 35/35 pass)
+- 2.9 tombstone ✅ (unit tests 13/13 pass)
+- 2.10 late_handler ✅ (unit tests 30/30 pass)
+- 2.11 output ✅ (unit tests 19/19 pass)
+- 2.11b store ✅ (unit tests 16/16 pass)
+- 2.11c pipeline ✅ (unit tests 18/18 pass)
+- 2.13 integration ✅ (integration tests 30/30 pass, 400/400 total pass)
 
 **Scripts thực tế:**
 - scripts/prepare_benchmark.py (placeholder)
@@ -229,7 +222,7 @@ Phase 2.11c — Pipeline:
 - [x] 2.11b EventStore
 - [x] 2.11c Pipeline
 - [x] 2.12 Unit tests per module (370 tests, 370/370 pass)
-- [ ] 2.13 Integration tests
+- [x] 2.13 Integration tests (30 integration tests, 400/400 total pass)
 
 ### Phase 3: Dữ liệu
 - [ ] B1: NYC Taxi base prep

@@ -130,10 +130,10 @@ class WavePipeline:
 
     def load_dc_rules(self, rules: List):
         """Load DC rules and build active boxes. Call after __init__ with rules."""
-        from waves.optimizer import EnrichedDC, DCParser
+        from waves.optimizer import DCParser
         self._dc_rules = rules
         parser = DCParser()
-        enriched = [parser.parse(rule) for rule in rules]
+        enriched = parser.parse_dc_rules(rules)
         groups = self._rule_grouper.group(enriched)
         from waves.optimizer import build_active_boxes
         self._active_boxes = build_active_boxes(enriched, groups, self._optimizer_cfg)
