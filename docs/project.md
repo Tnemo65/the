@@ -6,6 +6,38 @@
 
 ## Changelog
 
+### 2026-04-12 — Phase 2.6: Rapidash
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+- `waves/rapidash/candidate.py` — CandidateViolation, BatchedTraversalResult
+- `waves/rapidash/kdtree.py` — KDTreeNode, bulk_load, range_query, _argmax_range, _boxes_intersect (DEFAULT_LEAF_SIZE=16)
+- `waves/rapidash/traversal.py` — Intersects, point_in_box, traverse_node, BatchedTraversal
+- `waves/rapidash/__init__.py` — Export all 9 symbols (added bulk_load, range_query)
+- `tests/unit/test_rapidash.py` — 60 unit tests, 60/60 pass
+
+**Modules đã implement:**
+- 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
+- 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
+- 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
+- 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, unit tests 35/35 pass)
+- 2.5 optimizer ✅ (config: NYC_TAXI_BOUNDS; dc_parser: Predicate/DCParser/EnrichedDC; grouper: GreedyRuleGrouper/ActiveBox/build_active_boxes; unit tests 44/44 pass)
+- 2.6 rapidash ✅ (kdtree: KDTreeNode/bulk_load/range_query; traversal: BatchedTraversal/traverse_node/Intersects/point_in_box; candidate: CandidateViolation/BatchedTraversalResult; unit tests 60/60 pass)
+- 2.7 weever (placeholder)
+- 2.8 decision (placeholder)
+- 2.9 tombstone (placeholder)
+- 2.10 late_handler (placeholder)
+- 2.11 output (placeholder)
+- 2.11b store (placeholder)
+- 2.11c pipeline (placeholder)
+
+**Scripts thực tế:**
+- scripts/prepare_benchmark.py (placeholder)
+- scripts/inject_fraud.py (placeholder)
+
+---
+
 ### 2026-04-12 — Phase 2.5: SharedRuleOptimizer
 
 **Trạng thái:** Hoàn thành
