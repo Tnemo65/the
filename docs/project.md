@@ -6,6 +6,37 @@
 
 ## Changelog
 
+### 2026-04-12 — Phase 2.4: LogicalEngine
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+- `waves/logical_engine/engine.py` — StatisticalState, ElasticBox, ElasticBoxConfig, DenialConstraint, LogicalEngine (GỘP StatisticalContext + ElasticBoxGenerator + Coordinator)
+- `waves/logical_engine/__init__.py` — Export LogicalEngine, StatisticalState, ElasticBox, ElasticBoxConfig, DenialConstraint
+- `waves/__init__.py` — Export LogicalEngine, StatisticalState, ElasticBox, ElasticBoxConfig
+- `tests/unit/test_logical_engine.py` — 35 unit tests, 35/35 pass
+
+**Modules đã implement:**
+- 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
+- 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
+- 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
+- 2.4 logical_engine ✅ (engine: EMA mean/variance, ElasticBox padding, process_event pipeline, unit tests 35/35 pass)
+- 2.5 optimizer (placeholder)
+- 2.6 rapidash (placeholder)
+- 2.7 weever (placeholder)
+- 2.8 decision (placeholder)
+- 2.9 tombstone (placeholder)
+- 2.10 late_handler (placeholder)
+- 2.11 output (placeholder)
+- 2.11b store (placeholder)
+- 2.11c pipeline (placeholder)
+
+**Scripts thực tế:**
+- scripts/prepare_benchmark.py (placeholder)
+- scripts/inject_fraud.py (placeholder)
+
+---
+
 ### 2026-04-12 — Phase 2.3: BasicDQChecks
 
 **Trạng thái:** Hoàn thành
@@ -19,7 +50,7 @@
 - 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
 - 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
 - 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
-- 2.4 logical_engine (placeholder)
+- 2.4 logical_engine ✅ (engine: EMA, ElasticBox, unit tests 35/35 pass)
 - 2.5 optimizer (placeholder)
 - 2.6 rapidash (placeholder)
 - 2.7 weever (placeholder)
@@ -52,7 +83,7 @@
 - 2.1 ingestion ✅ (schema, connectors, unit tests 15/15 pass)
 - 2.2 windowing ✅ (pane, manager, watermark, unit tests 26/26 pass)
 - 2.3 basic_dq ✅ (checker, meta_stream, unit tests 27/27 pass)
-- 2.4 logical_engine (placeholder)
+- 2.4 logical_engine ✅ (engine: EMA, ElasticBox, unit tests 35/35 pass)
 - 2.5 optimizer (placeholder)
 - 2.6 rapidash (placeholder)
 - 2.7 weever (placeholder)
@@ -86,7 +117,7 @@
 - [x] 2.1 StreamIngestion
 - [x] 2.2 WindowManager
 - [x] 2.3 BasicDQChecks
-- [ ] 2.4 LogicalEngine
+- [x] 2.4 LogicalEngine
 - [ ] 2.5 SharedRuleOptimizer
 - [ ] 2.6 Rapidash
 - [ ] 2.7 Weever
