@@ -1,0 +1,56 @@
+# WAVES System Configuration
+
+# Window parameters
+window:
+  width_seconds: 600      # W = 10 minutes
+  slide_step_seconds: 120  # S = 2 minutes
+  pane_size_seconds: 60    # Pane = 1 minute
+
+# Watermark parameters
+watermark:
+  watermark_policy: "event_time"
+  wait_for_late_seconds: 300
+  watermark_advance_interval_seconds: 1
+  alert_ttl_seconds: 3600
+
+# Logical engine parameters
+logical_engine:
+  alpha: 0.05             # EMA learning rate
+  k: 3.0                  # Elastic box multiplier
+  delta_min: 5.0           # Minimum padding
+  delta_max: 300.0         # Maximum padding
+  warmup_samples: 50       # Min samples before using EMA
+  partition_by: null        # null = global; "PULocationID" = per zone
+
+# Optimizer parameters
+optimizer:
+  k_max: 5                # Max dimensions per group
+  infinite_padding: true   # Pad unused dimensions with (-inf, +inf)
+
+# Rapidash parameters
+rapidash:
+  leaf_size: 10            # Max points per leaf node
+
+# NYC Taxi static bounds
+static_bounds:
+  fare_amount:
+    min: 2.5
+    max: 500.0
+  trip_distance:
+    min: 0.0
+    max: 100.0
+  trip_duration:
+    min: 60.0
+    max: 10800.0
+  tolls_amount:
+    min: 0.0
+    max: 50.0
+
+# Output sinks
+output:
+  alert_sink:
+    type: "console"        # "console" | "file" | "kafka"
+    path: "alerts.jsonl"
+  meta_sink:
+    type: "console"        # "console" | "file" | "kafka"
+    path: "meta.jsonl"

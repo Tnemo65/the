@@ -1,0 +1,34 @@
+{
+  "dc_rules": [
+    {
+      "dc_id": "DC1",
+      "rule_group": "fare_distance",
+      "description": "Fare–Distance Dominance: Hai xe cùng quãng đường, xe ngắn không fare cao bất thường",
+      "predicates": [
+        {"left_col": "trip_distance_s", "operator": "EQUAL", "right_col": "trip_distance_t"},
+        {"left_col": "fare_amount_s", "operator": "LESS_EQUAL", "right_col": "fare_amount_t"},
+        {"left_col": "trip_distance_s", "operator": "LESS", "right_col": "trip_distance_t"}
+      ]
+    },
+    {
+      "dc_id": "DC2",
+      "rule_group": "duration_context",
+      "description": "Context-Aware Duration Anomaly: Cùng tuyến, duration chênh ngoài biên độ ngữ cảnh EMA",
+      "predicates": [
+        {"left_col": "PULocationID_s", "operator": "EQUAL", "right_col": "PULocationID_t"},
+        {"left_col": "DOLocationID_s", "operator": "EQUAL", "right_col": "DOLocationID_t"},
+        {"left_col": "trip_duration_s", "operator": "LESS_EQUAL", "right_col": "trip_duration_t"}
+      ]
+    },
+    {
+      "dc_id": "DC3",
+      "rule_group": "toll_route",
+      "description": "Toll Route Anomaly: Cùng tuyến, tolls chênh bất thường",
+      "predicates": [
+        {"left_col": "PULocationID_s", "operator": "EQUAL", "right_col": "PULocationID_t"},
+        {"left_col": "DOLocationID_s", "operator": "EQUAL", "right_col": "DOLocationID_t"},
+        {"left_col": "tolls_amount_s", "operator": "LESS_EQUAL", "right_col": "tolls_amount_t"}
+      ]
+    }
+  ]
+}

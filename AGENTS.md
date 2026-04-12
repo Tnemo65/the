@@ -398,6 +398,7 @@ flowchart TD
 4. ❌ Implement mà không research trước
 5. ❌ Quên cập nhật project.md khi có thay đổi
 6. ❌ Che giấu lỗi tải dữ liệu, lỗi mạng, hoặc thiếu quyền bằng cách tự đổi sang dữ liệu giả / luồng rút gọn mà không báo user
+7. ❌ **Lưu file tạm, demo, scratch vào project sau khi dùng xong** — xóa ngay hoặc không tạo file rời rạc. Chỉ tạo file khi cần commit/permanent artifact. File dùng một lần để debug/test nên dùng `pytest` fixture hoặc script inline, không tạo file rời trong `examples/` hoặc `scripts/` rồi bỏ đó.
 
 ---
 
