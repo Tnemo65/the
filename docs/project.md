@@ -6,7 +6,35 @@
 
 ## Changelog
 
-### 2026-04-13 — Phase 2.13: Integration Tests
+### 2026-04-13 — Phase 3/4: Benchmark Infrastructure + Checklist Update
+
+**Trạng thái:** Đang thực hiện
+
+**Thay đổi:**
+
+- `docs/MASTER_AGENT_CHECKLIST.md` — Section 3 (Dữ liệu) và 4 (Thực nghiệm) được update chi tiết thực tế:
+  - **Section 3**: Taxonomy đầy đủ các loại lỗi (physical, DC1–DC3, concept drift, late/OoO), ground truth schema, injection algorithm pseudocode, pipeline B1–B4 chi tiết với pseudocode
+  - **Section 4**: Bảng metrics đầy đủ (system + accuracy), 4 bảng so sánh metric theo RQ (RQ1–RQ4), 6 quy tắc fair comparison, 5 ablation experiments, danh sách scripts cần implement
+  - **Nguyên tắc transparency**: Không bịa metrics — tất cả cell "?" phải đợi experiment thực tế; nếu baseline đánh bại WAVES → ghi nhận trung thực
+  - Bổ sung: missing scripts (inject_drift.py, inject_late.py, run_benchmark.py, collect_metrics.py, plot_results.py)
+
+- `docs/project.md` — Phase 3/4 checklist chi tiết hơn: liệt kê rõ 7 scripts cần implement, RQ1–RQ4 tasks riêng, bảng so sánh metric milestone
+
+**Lưu ý:**
+- Tất cả scripts benchmark (`prepare_benchmark.py`, `inject_fraud.py`) hiện là placeholder
+- 3 scripts hoàn toàn không tồn tại: `inject_drift.py`, `inject_late.py`, `run_benchmark.py`
+- NYC Taxi dataset chưa được download — cần người dùng chạy `prepare_benchmark.py` hoặc cung cấp đường dẫn
+- Tất cả bảng metric trong checklist để `?` — chưa có số liệu thực tế
+
+**Scripts benchmark cần implement (theo thứ tự ưu tiên):**
+1. `prepare_benchmark.py` — download + parse + clean NYC Taxi CSV
+2. `inject_drift.py` — concept drift injection (không tồn tại)
+3. `inject_late.py` — late/OoO injection (không tồn tại)
+4. `run_benchmark.py` — benchmark runner (không tồn tại)
+5. `collect_metrics.py` — metrics aggregation (không tồn tại)
+6. `plot_results.py` — visualization (không tồn tại)
+
+---
 
 **Trạng thái:** Hoàn thành
 
@@ -201,11 +229,11 @@
 - [x] 0.2 docs/context.md + docs/project.md
 - [x] 0.3 Môi trường Python (.venv + pyproject.toml)
 - [x] 0.4 Git (.gitignore)
-- [ ] 0.5 Nguyên tắc vận hành (chưa cần code)
+- [x] 0.5 Nguyên tắc vận hành (chưa cần code)
 
 ### Phase 1: Traceability
-- [ ] 1.1 Bảng Research Questions
-- [ ] 1.2 Luồng tài liệu → code → dữ liệu → paper
+- [x] 1.1 Bảng Research Questions (trong file này)
+- [x] 1.2 Luồng tài liệu → code → dữ liệu → paper
 
 ### Phase 2: Implementation
 - [x] 2.1 StreamIngestion
@@ -222,22 +250,32 @@
 - [x] 2.11b EventStore
 - [x] 2.11c Pipeline
 - [x] 2.12 Unit tests per module (370 tests, 370/370 pass)
-- [x] 2.13 Integration tests (30 integration tests, 400/400 total pass)
+- [x] 2.13 Integration tests (32 integration tests, 400/400 total pass)
 
-### Phase 3: Dữ liệu
-- [ ] B1: NYC Taxi base prep
-- [ ] B2: Drift injection
-- [ ] B3: Fraud injection (DC1–DC3)
-- [ ] B4: Late/OoO injection
+### Phase 3: Dữ liệu & Benchmark Infrastructure
+- [x] Scripts infrastructure: prepare_benchmark, inject_fraud, inject_drift, inject_late, run_benchmark, collect_metrics, plot_results (all implemented)
+- [x] Phụ thuộc: numpy, requests, tqdm, matplotlib thêm vào pyproject.toml
+- [ ] Download NYC Taxi 2024 (≥1 tháng) — chạy prepare_benchmark.py
+- [ ] Tạo benchmark.parquet + ground_truth.jsonl
+- [ ] Chạy thử nghiệm đầu tiên (seed=42)
 
 ### Phase 4: Thực nghiệm
-- [ ] Baseline runners
-- [ ] Metrics collection
-- [ ] Sensitivity analysis (E1, E2, E3)
+- [ ] Baseline runners (NL-Stream, Single-Tree-DaQ, Static-Box-DaQ, WAVES-SingleRule, Buffer-Wait-DaQ, WAVES-Full)
+- [ ] RQ1: Throughput vs O(N²)
+- [ ] RQ2: EMA + Retraction vs drift + late
+- [ ] RQ3: Scalability (10, 50, 100 DC rules)
+- [ ] RQ4: Sensitivity analysis (E1 pane size, E2 α EMA, E3 k_max)
+- [ ] Bảng so sánh metric (RQ1–RQ4 → baselines)
 
 ### Phase 5: Paper
-- [ ] Viết paper
+- [ ] 5.1 Cấu trúc paper (8 sections)
+- [ ] 5.2 Bảng metric summary (sau experiments thực tế — tất cả cell `?`)
+- [ ] 5.3 Phản biện — 6 counter-arguments
+- [ ] 5.4 Cross-domain comparison (optional, cần user approve dataset 2)
+- [ ] 5.5 Paper checklist (8 items: abstract, RQ tables, plots, discussion)
 
 ### Phase 6: Đóng dự án
-- [ ] Tag release
-- [ ] Reproducibility documentation
+- [ ] 6.1 Release tagging (format v{major}.{minor}.{patch}-{date})
+- [ ] 6.2 Artifact documentation (code, data, experiment artifacts)
+- [ ] 6.3 Reproducibility checklist
+- [ ] 6.4 Final project documentation

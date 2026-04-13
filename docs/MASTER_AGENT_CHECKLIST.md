@@ -1793,28 +1793,147 @@ CLASS Pipeline:
 
 ## 3. Dữ liệu, ground truth, pipeline benchmark
 
-### 3.1 Tập nền (B1)
+### 3.1 Nguồn dữ liệu (hiện tại: placeholder — cần download thực tế)
 
-- [ ] Nguồn: NYC Taxi Yellow Cab; CSV hoặc Parquet.
-- [ ] Trường: `tpep_pickup_datetime`, `tpep_dropoff_datetime`, `PULocationID`, `DOLocationID`, `trip_distance`, `fare_amount`, `total_amount`, `trip_duration`, `tolls_amount`, `RatecodeID`.
-- [ ] B1 — loại lỗi vật lý, chuẩn hóa schema → tập sạch.
+**NYC Taxi Yellow Cab** (B1–B4):
 
-### 3.2 Ground truth
+- Nguồn: `https://www.nyc.gov/site/tlc/about/trip-record-data.page`
+- Định dạng: CSV (Yellow Cab, các tháng cần benchmark)
+- Các trường cần: `tpep_pickup_datetime`, `tpep_dropoff_datetime`, `PULocationID`, `DOLocationID`, `trip_distance`, `fare_amount`, `total_amount`, `trip_duration` (= `tpep_dropoff_datetime - tpep_pickup_datetime`), `tolls_amount`, `RatecodeID`
+- Cách download: `scripts/prepare_benchmark.py` — download từ URL chuẩn, parse, filter, sort theo `IngestionTime`
+- Lưu ý: không bịa đặt dữ liệu thay thế nếu download lỗi — **báo user** ngay
 
-- [ ] Ground truth do pipeline tiêm có kiểm soát, biết rõ bản ghi/loại lỗi/thời điểm.
+**Nguồn thứ hai (RQ cross-domain)**: Cân nhắc thêm domain khác nếu muốn so sánh đa bài toán (ví dụ: sensor stream, financial transaction log). Nếu dùng: khai báo rõ trong paper, cùng DC logic áp dụng.
 
-### 3.3 Module tiêm nhiễu
+### 3.2 Ground Truth
 
-- [ ] Tiêm vi phạm logic: fare / distance / duration.
-- [ ] Concept drift: tăng trip_duration cao điểm.
-- [ ] Late & OoO: ~90% on-time; ~10% late 120–300s.
-- [ ] **Sort toàn bộ DataFrame theo `IngestionTime` bước cuối cùng.**
+**Nguyên tắc: ground truth do pipeline tiêm có kiểm soát, biết rõ bản ghi/loại lỗi/thời điểm.**
 
-### 3.4 Chuỗi B2–B4
+```
+OUTPUT: ground_truth.parquet / ground_truth.jsonl
+Mỗi dòng chứa:
+  - event_id: ID bản ghi gốc
+  - noise_type: "none" | "dc1" | "dc2" | "dc3" | "physical" | "late" | "drift"
+  - injection_timestamp: thời điểm tiêm (event_time gốc)
+  - true_label: True (có lỗi) | False (sạch)
+  - violation_id: ID của vi phạm DC (để map với kết quả detection)
+```
 
-- [ ] B2 — Drift injection.
-- [ ] B3 — Fraud injection (DC1–DC3).
-- [ ] B4 — Late-data injection → luồng benchmark cuối.
+**Khi tiêm lỗi:** (1) Đọc clean dataset → (2) Với mỗi batch tiêm: chọn ngẫu nhiên N% bản ghi, ghi ground truth trước khi mutate, mutate bản ghi theo loại lỗi (không đổi event_id), gắn flag `noise_type` → (3) Sort toàn bộ DataFrame theo `ingestion_time` → (4) Output: `dataset_dir/clean.parquet`, `dataset_dir/with_noise.parquet`, `dataset_dir/ground_truth.jsonl`.
+
+### 3.3 Module tiêm nhiễu — taxonomy đầy đủ
+
+#### 3.3.1 Lỗi vật lý (physical)
+
+| Loại | Mô tả | Cách phát hiện |
+|------|--------|----------------|
+| `missing_value` | Trường bắt buộc bị null | BasicDQ null check |
+| `out_of_range` | Giá trị ngoài physical bounds | BasicDQ range check |
+| `type_error` | Sai kiểu dữ liệu | BasicDQ type check |
+| `negative_amount` | fare_amount < 0 | BasicDQ range |
+
+#### 3.3.2 Lỗi logic (DC1–DC3)
+
+| DC | Violation type | Injection logic |
+|----|---------------|----------------|
+| **DC1**: Fare–Distance Dominance | Xe ngắn fare cao bất thường | Với cặp (s, t) cùng `trip_distance ± ε`: set `fare_amount[s]` > `fare_amount[t]` × 1.5 |
+| **DC2**: Duration Anomaly | Cùng tuyến, duration chênh lớn | Với cùng (PULoc, DOLoc, Ratecode): set `trip_duration[s]` > median × 2.5 |
+| **DC3**: Toll Route Anomaly | Cùng tuyến, toll bất thường | Với cùng (PULoc, DOLoc, Ratecode): set `tolls_amount[s]` > `tolls_amount[t]` × 3 |
+
+#### 3.3.3 Concept drift
+
+| Loại | Injection logic | Target |
+|------|-----------------|--------|
+| **Sudden drift** | Tăng `trip_duration` lên 2× trong 1 giờ cụ thể (đỉnh cao điểm mô phỏng) | DC2, RQ2 |
+| **Incremental drift** | Tăng dần `trip_duration` +0.5%/phút trong 10 phút | DC2, RQ2 |
+
+#### 3.3.4 Late data / Out-of-order
+
+| Tham số | Giá trị mặc định |
+|---------|-------------------|
+| on-time ratio | ~90% |
+| late ratio | ~10% |
+| lateness range | 120s – 300s |
+| OoO ratio | ~5% (đảo thứ tự nhỏ) |
+
+Injection: gán `ingestion_time` = `event_time + lateness`, sort theo `ingestion_time` để tạo OoO pattern.
+
+#### 3.3.5 Injection pseudocode
+
+```
+ALGORITHM inject_noise(clean_df, config):
+# config = {dc_ratios, physical_ratios, drift_ratios, late_ratios}
+
+1. ground_truth = []
+2. df = clean_df.copy()
+
+3. # DC injection
+   FOR (dc_id, ratio) IN config.dc_ratios:
+       pairs = find_candidate_pairs(df, dc_id)
+       n_inject = int(len(pairs) * ratio)
+       selected = random.sample(pairs, n_inject)
+       FOR (s_idx, t_idx) IN selected:
+           df = apply_dc_violation(df, s_idx, t_idx, dc_id)
+           ground_truth.append({...})
+
+4. # Physical error injection
+   FOR (field, error_type, ratio) IN config.physical_ratios:
+       mask = random.sample(range(len(df)), int(len(df) * ratio))
+       FOR idx IN mask:
+           df = apply_physical_error(df, idx, field, error_type)
+           ground_truth.append({...})
+
+5. # Drift injection
+   drift_windows = select_drift_windows(df)
+   FOR (w_start, w_end) IN drift_windows:
+       df = apply_drift(df, w_start, w_end, config.drift_type)
+
+6. # Late data injection
+   late_mask = random.sample(range(len(df)), int(len(df) * config.late_ratio))
+   FOR idx IN late_mask:
+       original_ingestion = df.iloc[idx]["ingestion_time"]
+       df.iloc[idx]["ingestion_time"] = original_ingestion + random.uniform(120, 300)
+
+7. df = sort_by_ingestion_time(df)
+8. RETURN df, ground_truth
+```
+
+### 3.4 Pipeline B1–B4 (Scripts — IMPLEMENTED)
+
+```
+WAVES/scripts/
+├── prepare_benchmark.py    # B1: download + clean NYC Taxi → clean.parquet
+├── inject_fraud.py         # B3: DC1–DC3 injection → fraud.parquet + ground_truth
+├── inject_drift.py         # B2: drift injection → drift.parquet + metadata
+├── inject_late.py          # B4: late/OoO injection → benchmark.parquet
+├── run_benchmark.py        # Chạy 1 config → output metrics JSON
+├── collect_metrics.py      # Aggregate nhiều runs → summary CSV
+╲── plot_results.py         # Vẽ chart từ summary CSV
+
+Data pipeline (thứ tực chạy):
+  B1: python -m scripts.prepare_benchmark --year 2024 --months 1 2 3
+  B3: python -m scripts.inject_fraud --input data/clean.parquet
+  B2: python -m scripts.inject_drift --input data/fraud.parquet
+  B4: python -m scripts.inject_late --input data/drift.parquet
+
+Final output:
+  data/benchmark.parquet       — dataset đã clean + injected (ready for benchmark)
+  data/ground_truth.jsonl     — ground truth labels (DC1/2/3 + late records)
+  data/drift_metadata.json    — drift injection metadata
+
+Metrics pipeline:
+  python -m scripts.run_benchmark --benchmark data/benchmark.parquet --seed 42
+  python -m scripts.collect_metrics --results-dir results --seeds 42 43 44
+  python -m scripts.plot_results --results-dir results/aggregate
+```
+
+- [x] `prepare_benchmark.py` — download + clean NYC Taxi (Parquet from NYC TLC)
+- [x] `inject_fraud.py` — DC1–DC3 injection + ground truth
+- [x] `inject_drift.py` — concept drift injection (sudden + incremental)
+- [x] `inject_late.py` — late/OoO injection
+- [x] `run_benchmark.py` — benchmark runner (WavePipeline + metrics collection)
+- [x] `collect_metrics.py` — metrics aggregation (mean ± std per seed, RQ tables)
+- [x] `plot_results.py` — visualization (RQ1–RQ4 plots, ablation plots)
 
 ---
 
@@ -1822,44 +1941,307 @@ CLASS Pipeline:
 
 ### 4.1 Luật logic benchmark (DC1–DC3)
 
-- [ ] **DC1**: cùng trip_distance → xe ngắn không fare > xe dài.
-- [ ] **DC2**: cùng tuyến → duration chênh ngoài biên độ EMA.
-- [ ] **DC3**: cùng tuyến → tolls chênh bất thường.
+| DC | Tên | Mô tả | Module |
+|----|-----|-------|--------|
+| DC1 | Fare–Distance Dominance | Hai xe quãng đường gần nhau → xe ngắn không fare cao bất thường | Rapidash/KD-Tree |
+| DC2 | Context-Aware Duration Anomaly | Chuyến tương đồng không chênh duration quá lớn ngoài biên độ ngữ cảnh | EMA/Elastic Box |
+| DC3 | Toll Route Anomaly | Cùng tuyến không lệch toll bất thường | Shared indexing / multi-rule |
 
 ### 4.2 Baselines
 
 | Hệ thống | KD-Tree | Pane | EMA | Retraction | Mục đích |
 |-----------|---------|------|-----|------------|----------|
-| NL-Stream | ✗ | ✗ | ✗ | ✗ | O(N²) |
-| Single-Tree-DaQ | ✓ | ✗ | ✗ | ✗ | Một cây lớn |
-| Static-Box-DaQ | ✓ | ✓ | ✗ | ✓ | Drift → FP |
-| WAVES-SingleRule | ✓ | ✓ | ✓ | ✓ | Không shared optimizer |
-| Buffer-Wait-DaQ | ✓ | ✓ | ✓ | ✗ | Latency cao |
+| NL-Stream | ✗ | ✗ | ✗ | ✗ | O(N²) — chứng minh nút thắt |
+| Single-Tree-DaQ | ✓ | ✗ | ✗ | ✗ | Một cây lớn → fragment/spike |
+| Static-Box-DaQ | ✓ | ✓ | ✗ | ✓ | Drift → false positive |
+| WAVES-SingleRule | ✓ | ✓ | ✓ | ✓ | Tắt shared optimizer — nhiều cây rời |
+| Buffer-Wait-DaQ | ✓ | ✓ | ✓ | ✗ | Detection latency cao (chờ watermark) |
 | WAVES-Full | ✓ | ✓ | ✓ | ✓ | Đầy đủ |
 
+- [ ] Mỗi baseline chạy trên **cùng dataset** (benchmark.parquet + ground_truth.jsonl).
+- [ ] Mỗi baseline có **seed cố định** để reproducibility.
 - [ ] Mỗi baseline có cấu hình và log chạy có thể tái lập.
 
-### 4.3 Metrics
+### 4.3 Metrics thu thập
 
-- [ ] System: Throughput, P99 latency, detection latency, RAM.
-- [ ] Accuracy: Precision, Recall, F1 (sau retraction).
-- [ ] Sensitivity: E1 (pane size), E2 (α EMA), E3 (dimension cap).
+#### 4.3.1 System metrics
+
+| Metric | Định nghĩa | Cách đo |
+|--------|-----------|---------|
+| **Throughput** | events/s | total_events / elapsed_wall_clock_time |
+| **P99 latency** | percentile 99 của event processing time | ghi mỗi event: ingestion_time → output_time |
+| **Avg latency** | trung bình event processing time | same |
+| **Detection latency** | event_time → khi alert output | alert.output_time - event.event_time |
+| **RAM peak** | peak memory footprint | `psutil.Process().memory_info().rss` mỗi 1s |
+| **Visited nodes** | tổng số KD-Tree nodes duyệt | Rapidash traversal counters |
+| **Pruned nodes** | tổng số KD-Tree nodes bị prune | Rapidash traversal counters |
+
+#### 4.3.2 Accuracy metrics
+
+| Metric | Định nghĩa | Cách đo |
+|--------|-----------|---------|
+| **Precision** | TP / (TP + FP) | So sánh output alerts với ground_truth.jsonl |
+| **Recall** | TP / (TP + FN) | So sánh output alerts với ground_truth.jsonl |
+| **F1** | 2 × Precision × Recall / (Precision + Recall) | Tính từ P và R |
+| **False Positive Rate** | FP / (FP + TN) | Đặc biệt quan trọng với drift (Static-Box-DaQ baseline) |
+| **Retraction rate** | retracted_alerts / total_provisional_alerts | Từ alert output stream |
+| **Final alert count** | alerts có status = FINAL | Từ alert output stream |
+
+**Cách tính accuracy**: với mỗi alert từ WAVES, map với ground truth theo `(violation_id, dc_id, window_id)`. Đếm TP/FP/FN theo matching rules.
+
+### 4.4 Bảng so sánh metric — RQ → Baseline
+
+> **Nguyên tắc: KHÔNG bịa metrics. Chỉ ghi expected behavior dựa trên lý thuyết.**
+> Cell "Thực tế" phải để trống cho đến khi chạy experiment thực tế.
+> Nếu baseline đánh bại WAVES-Full ở metric nào → ghi nhận trung thực, không loại bỏ.
+
+#### RQ1: Throughput vượt O(N²)?
+
+| Metric | NL-Stream | Single-Tree | Static-Box | WAVES-SingleRule | WAVES-Full | Ghi chú |
+|--------|-----------|-------------|------------|-----------------|------------|---------|
+| Throughput (events/s) | 1× baseline | ? | ? | ? | ? | Thực tế: đo |
+| P99 latency (ms) | baseline | ? | ? | ? | ? | Thực tế: đo |
+| Detection latency (s) | ? | ? | ? | ? | ? | Thực tế: đo |
+| Visited nodes avg | N/A | N/A | N/A | ? | ? | Baseline: full scan |
+| Pruned node ratio | N/A | N/A | N/A | ? | ? | WAVES: nên cao |
+
+#### RQ2: EMA + Retraction giữ F1 khi drift + late?
+
+| Metric | NL-Stream | Static-Box | Buffer-Wait | WAVES-Full | Ghi chú |
+|--------|-----------|------------|-------------|------------|---------|
+| Precision (no drift) | ? | ? | ? | ? | Thực tế: đo |
+| Recall (no drift) | ? | ? | ? | ? | Thực tế: đo |
+| F1 (no drift) | ? | ? | ? | ? | Thực tế: đo |
+| Precision (with drift) | ? | ? | ? | ? | Drift → static: FP cao (lý thuyết) |
+| Recall (with drift) | ? | ? | ? | ? | Thực tế: đo |
+| F1 (with drift) | ? | ? | ? | ? | WAVES-Full nên cao hơn Static-Box |
+| F1 (with late data) | ? | ? | ? | ? | Buffer-Wait: FP từ late (lý thuyết) |
+| Retraction rate | N/A | ? | N/A | ? | WAVES-Full: có retraction |
+
+#### RQ3: Mở rộng khi 50–100 luật DC?
+
+| Metric | WAVES-SingleRule (10 DC) | WAVES-Full (10 DC) | WAVES-Full (50 DC) | WAVES-Full (100 DC) | Ghi chú |
+|--------|--------------------------|-------------------|-------------------|--------------------|---------|
+| Throughput (events/s) | ? | ? | ? | ? | Thực tế: đo |
+| Memory (MB) | ? | ? | ? | ? | WAVES-Full nên ổn định |
+| Shared box hit rate | N/A | ? | ? | ? | Optimizer effectiveness |
+| KD-Tree builds/sec | ? | ? | ? | ? | Với nhiều rules |
+
+#### RQ4: Trade-off siêu tham số?
+
+| Experiment | Parameter | Range | Metrics affected |
+|------------|-----------|-------|-----------------|
+| E1 — Pane size | pane_size | 30s, 60s, 120s, 300s | P99 latency, detection latency, RAM |
+| E2 — α (EMA) | alpha | 0.01, 0.05, 0.1, 0.2, 0.5 | Precision, Recall, F1 (drift dataset) |
+| E3 — Dimension cap (k_max) | k_max | 2, 4, 6, 8, unlimited | Throughput, RAM, precision |
+
+### 4.5 Quy tắc so sánh công bằng (fair comparison)
+
+1. **Cùng dataset**: Tất cả baselines chạy trên **benchmark.parquet + ground_truth.jsonl** — không thay đổi data giữa các runs.
+2. **Cùng ground truth**: Metrics tính theo cùng ground_truth file — không tự định nghĩa TP/FP riêng.
+3. **Warm-up**: Bỏ qua first 1000 events cho throughput/latency (cold start bias).
+4. **Statistical significance**: Mỗi experiment chạy **≥ 3 seeds khác nhau**; báo cáo mean ± std. Nếu p < 0.05 giữa 2 hệ thống → significant.
+5. **Metric transparency**: Nếu baseline đánh bại WAVES-Full ở metric nào → ghi nhận trung thực, không loại bỏ.
+6. **Không cherry-pick**: Báo cáo tất cả experiments, không chỉ chọn experiments có kết quả tốt.
+7. **Reproducibility**: Ghi rõ seed, commit hash, config YAML mỗi run.
+
+### 4.6 Ablation analysis
+
+| Ablation | Mô tả | Expected (lý thuyết) |
+|----------|--------|----------------------|
+| A1 — Không KD-Tree (NL-Stream) | Throughput baseline, confirm O(N²) bottleneck | Throughput: thấp nhất; latency: cao nhất |
+| A2 — Không Pane (Single-Tree-DaQ) | Memory spike, detection latency spike | Memory: cao bất thường; latency: spike |
+| A3 — Không EMA (Static-Box-DaQ) | Precision drop khi có concept drift | Precision: giảm khi drift; F1: thấp hơn WAVES |
+| A4 — Không Retraction (Buffer-Wait-DaQ) | FP rate tăng với late data | FPR: cao hơn WAVES |
+| A5 — Không Shared Optimizer (WAVES-SingleRule) | Throughput drop khi tăng số luật DC | Throughput: giảm tuyến tính với số rules |
+
+**Contribution = (metric với cơ chế) - (metric không cơ chế)**
+
+### 4.7 Scripts cần implement (hiện tại: placeholder)
+
+```
+scripts/
+├── prepare_benchmark.py      # Download + parse + clean NYC Taxi CSV
+├── inject_fraud.py           # DC1–DC3 injection + ground truth
+├── inject_drift.py           # Concept drift injection
+├── inject_late.py            # Late data / OoO injection
+├── run_benchmark.py          # Chạy 1 config → output metrics JSON
+├── run_ablation.py           # Chạy tất cả ablation configs
+├── collect_metrics.py        # Aggregate nhiều runs → summary CSV
+└── plot_results.py           # Vẽ chart từ summary CSV
+```
+
+- [ ] `prepare_benchmark.py` — download + clean NYC Taxi
+- [ ] `inject_drift.py` — concept drift injection (hiện không tồn tại)
+- [ ] `inject_late.py` — late/OoO injection (hiện không tồn tại)
+- [ ] `run_benchmark.py` — benchmark runner (hiện không tồn tại)
+- [ ] `collect_metrics.py` — metrics aggregation (hiện không tồn tại)
+- [ ] `plot_results.py` — visualization (hiện không tồn tại)
 
 ---
 
 ## 5. Hoàn thiện paper và phản biện
 
-- [ ] Bốn RQ map thí nghiệm rõ ràng.
-- [ ] Baselines/ablation đầy đủ.
-- [ ] Phản biện: O(N²) vs KD-Tree; pane vs một cây; EMA vs tĩnh; Tombstone vs watermark.
+### 5.1 Cấu trúc paper
+
+```
+1. Introduction: Problem statement (DC monitoring in streaming)
+2. Background: Stream DaQ, Rapidash, Weever
+3. Related Work: So sánh với các hệ thống khác
+4. Architecture: WAVES pipeline + module interactions
+5. Design: Chi tiết từng module (2.1–2.11)
+6. Experiments: RQ1–RQ4, baselines, ablations, sensitivity
+7. Discussion: Limitations, trade-offs
+8. Conclusion
+```
+
+### 5.2 Bảng metric summary (sau khi chạy experiments thực tế)
+
+> **Nguyên tắc: Bảng này chỉ điền SAU khi chạy experiments thực tế. Không bịa số.**
+
+| Metric | NL-Stream | Single-Tree-DaQ | Static-Box-DaQ | WAVES-Full | Winner |
+|--------|-----------|-----------------|----------------|------------|--------|
+| Throughput (events/s) | ? | ? | ? | ? | TBD |
+| P99 Latency (ms) | ? | ? | ? | ? | TBD |
+| Avg Latency (ms) | ? | ? | ? | ? | TBD |
+| Detection Latency (s) | ? | ? | ? | ? | TBD |
+| F1 (no drift) | ? | ? | ? | ? | TBD |
+| F1 (with drift) | ? | ? | ? | ? | TBD |
+| F1 (with late data) | ? | ? | ? | ? | TBD |
+| Precision (no drift) | ? | ? | ? | ? | TBD |
+| Recall (no drift) | ? | ? | ? | ? | TBD |
+| Precision (with drift) | ? | ? | ? | ? | TBD |
+| Recall (with drift) | ? | ? | ? | ? | TBD |
+| Memory Peak (MB) | ? | ? | ? | ? | TBD |
+| Retraction Rate | N/A | N/A | ? | ? | TBD |
+| Pruned Node Ratio | N/A | N/A | N/A | ? | TBD |
+
+- [ ] Bảng này chỉ điền SAU khi chạy experiments thực tế
+- [ ] Mỗi metric: mean ± std từ ≥ 3 seeds
+- [ ] Statistical significance: p < 0.05
+
+### 5.3 Phản biện — Counter-arguments
+
+| # | Reviewer argument | WAVES response |
+|---|------------------|----------------|
+| R1 | "O(N²) baseline không fair — thực tế ai dùng O(N²)?" | O(N²) là lower bound để show KD-Tree contribution. Single-Tree-DaQ cũng valid (khác: shared index, pane isolation). So sánh cả hai. |
+| R2 | "EMA overhead không đáng — có thể dùng static box?" | Precision drop khi drift (Static-Box-DaQ) sẽ được đo. Dùng F1 improvement justify overhead. Ablation A3 chứng minh contribution. |
+| R3 | "Pane overhead không đáng với small dataset?" | Memory spike của Single-Tree-DaQ sẽ được đo. Pane giới hạn tree size, giảm rebuild cost khi window slide. |
+| R4 | "Retraction mechanism phức tạp — có cần không?" | FP rate của Buffer-Wait sẽ được đo. Dùng retraction rate + F1 justify. Ablation A4 chứng minh contribution. |
+| R5 | "Shared optimizer không generalize?" | RQ3 scale test (10, 50, 100 DC rules) sẽ đo shared box hit rate. Kết quả sẽ show generalization hay không. |
+| R6 | "Baseline comparison không cross-domain?" | Nếu có dataset thứ hai: so sánh cross-domain normalized metrics. Nếu không: giải thích scope NYC Taxi + future work. |
+
+### 5.4 Cross-domain comparison (optional)
+
+> User requirement: "benchmark giữa nhiều bài toán với nhau"
+
+**Lưu ý**: Cross-domain là optional — chỉ thực hiện nếu có dataset thứ hai.
+
+| Dataset | DC rules | Domain | Status |
+|---------|----------|--------|--------|
+| NYC Taxi | DC1 (fare-distance), DC2 (duration), DC3 (toll) | Transportation | Required |
+| [Dataset 2] | TBD | TBD | Optional — user approval required |
+
+**Cross-domain summary table:**
+
+| Metric | NYC Taxi | [Dataset 2] | Normalization | Notes |
+|--------|----------|-------------|--------------|-------|
+| Throughput (events/s) | ? | ? | events/s (raw) | Dataset-dependent |
+| F1 | ? | ? | Raw | DC-dependent |
+| Memory (MB/1000 events) | ? | ? | Normalized by rate | Infrastructure |
+| Shared optimizer hit rate | ? | ? | % boxes shared | Domain-dependent |
+| Detection latency (s) | ? | ? | Raw | Event time semantics |
+
+- [ ] Chỉ thực hiện nếu user cung cấp hoặc approve dataset thứ hai
+- [ ] Không bịa dataset — phải download thực tế từ nguồn có thể verify
+
+### 5.5 Paper checklist
+
+- [ ] Abstract: đủ 4 contributions (throughput, accuracy, scalability, sensitivity)
+- [ ] RQ1: throughput comparison table (with statistical significance)
+- [ ] RQ2: F1/precision/recall table (with/without drift, with/without late)
+- [ ] RQ3: scalability plot (throughput vs number of DC rules)
+- [ ] RQ4: sensitivity plots (E1 pane size, E2 α EMA, E3 k_max)
+- [ ] Ablation plots (A1–A5 contribution breakdown)
+- [ ] Discussion: limitations, parameter tuning guidance
+- [ ] Reproducibility section: link to code + data + configs
 
 ---
 
-## 6. Đóng dự án và tái hiện
+## 6. Đóng dự án và tái hiện (reproducibility)
 
-- [ ] Tag release trùng bản dùng cho paper.
-- [ ] Ghi commit hash, seed, ruleset/config JSON.
-- [ ] Cập nhật `docs/project.md` cuối cùng.
+### 6.1 Release tagging
+
+- [ ] Tag format: `v{major}.{minor}.{patch}-{date}`
+  - Ví dụ: `v0.1.0-20260413`
+- [ ] Ghi trong tag message: commit hash, dataset version, seed used
+- [ ] Ghi trong GitHub release: link to paper PDF, benchmark config, key results
+
+### 6.2 Artifact documentation
+
+#### Code artifact
+
+- [ ] `README.md` (WAVES/): installation, quick start, architecture overview
+- [ ] Dependencies: `pip freeze > requirements.txt` hoặc lock file
+- [ ] Code structure: giải thích từng module (ref: section 2)
+
+#### Data artifact
+
+- [ ] `benchmark.parquet`: cleaned + noise-injected dataset
+- [ ] `ground_truth.jsonl`: ground truth labels
+- [ ] Nếu không share dataset: ghi rõ nguồn download (NYC TLC URL) + script để reproduce
+
+#### Experiment artifact
+
+```
+results/
+├── run_YYYYMMDD_HHMMSS_seed42/
+│   ├── metrics.json        # Throughput, latency, accuracy metrics
+│   ├── config.yaml         # System config used
+│   ├── dc_rules.json       # DC rules used
+│   └── summary.csv         # Per-event metrics (nếu cần)
+├── run_YYYYMMDD_HHMMSS_seed43/
+│   └── ...
+└── aggregate/
+    ├── rq1_summary.csv     # RQ1: throughput comparison
+    ├── rq2_summary.csv     # RQ2: accuracy comparison
+    ├── rq3_summary.csv     # RQ3: scalability
+    ├── rq4_summary.csv     # RQ4: sensitivity
+    └── ablation_summary.csv
+```
+
+- [ ] Mỗi run: ghi timestamp, seed, commit hash, config hash
+- [ ] Aggregate: mean ± std từ ≥ 3 seeds
+
+### 6.3 Reproducibility checklist
+
+```
+MINIMUM REQUIREMENTS TO REPRODUCE:
+  [ ] Python environment: pip install -e . (WAVES package)
+  [ ] Data preparation:
+      [ ] python scripts/prepare_benchmark.py  (hoặc cung cấp benchmark.parquet)
+      [ ] python scripts/inject_fraud.py       (hoặc cung cấp ground_truth.jsonl)
+      [ ] python scripts/inject_drift.py
+      [ ] python scripts/inject_late.py
+  [ ] Run experiment:
+      [ ] python scripts/run_benchmark.py --config configs/system.yaml --seed 42
+  [ ] Output: results/run_*/metrics.json
+
+EXPECTED OUTPUT MATCH (tolerance):
+  [ ] Throughput: ±5% so với reported result
+  [ ] Precision: ±2% so với reported result
+  [ ] Recall: ±2% so với reported result
+  [ ] F1: ±2% so với reported result
+```
+
+### 6.4 Final project documentation
+
+- [ ] `README.md` (WAVES/): hướng dẫn cài đặt + chạy benchmark
+- [ ] `docs/context.md`: cập nhật milestone cuối cùng
+- [ ] `docs/project.md`: changelog cuối cùng
+- [ ] `docs/MASTER_AGENT_CHECKLIST.md`: đánh dấu tất cả sections đã hoàn thành
+
+---
 
 ---
 
