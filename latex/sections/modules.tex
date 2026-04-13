@@ -1,0 +1,207 @@
+\chapter{Đặc tả các module kỹ thuật}
+
+\section{Module 1 -- Statistical Context Engine và Elastic Box Generator}
+
+\subsection{Mục tiêu}
+Cung cấp khả năng tự thích nghi (self-adaptive) trước concept drift. Module biến các luật denial constraints có ngưỡng tĩnh thành các đối tượng hình học động (Elastic Bounding Box), để Rapidash luôn truy vấn theo ngữ cảnh thống kê hiện tại.
+
+\subsection{Input}
+\begin{itemize}
+  \item Luồng tham số liên tục: trip\_duration, fare\_amount, trip\_distance, v.v.
+  \item Bộ luật DC gốc ở dạng static bounds.
+  \item Cấu hình: $\alpha$ (hệ số EMA), $k$ (hệ số nới), $\Delta_{\min}$, $\Delta_{\max}$.
+\end{itemize}
+
+\subsection{Cách hoạt động}
+Module duy trì ngữ cảnh thống kê online nhẹ cho từng feature mà luật cần dùng.
+
+\begin{enumerate}
+  \item \textbf{Cập nhật trung bình động:} khi giá trị mới $X_t$ đến, cập nhật $\mu_t = (1-\alpha) \cdot \mu_{t-1} + \alpha \cdot X_t$.
+  \item \textbf{Cập nhật phương sai động:} $\sigma_t^2 = (1-\alpha) \cdot \sigma_{t-1}^2 + \alpha \cdot (X_t - \mu_{t-1})^2$.
+  \item \textbf{Lấy độ lệch chuẩn:} $\sigma_t = \sqrt{\max(\sigma_t^2, 0)}$.
+  \item \textbf{Tính độ nới lỏng:} $\Delta_t = k \cdot \sigma_t$, sau đó clamp: $\Delta_t = \min(\max(\Delta_t, \Delta_{\min}), \Delta_{\max})$.
+  \item \textbf{Sinh ElasticBoundingBox:} cộng hoặc trừ $\Delta_t$ vào bound của luật DC gốc.
+\end{enumerate}
+
+Output: cấu trúc ElasticBoundingBox gồm \{rule\_id, dimensions, effective\_bounds, timestamp\_context, $\mu$, $\sigma$, $\Delta$\}.
+
+\subsection{Edge cases}
+\begin{itemize}
+  \item \textbf{Zero variance:} khi $\sigma = 0$, luôn áp dụng $\Delta_{\min} > 0$ để tránh box co về điểm.
+  \item \textbf{Drift đột ngột:} dùng clamp bằng $\Delta_{\max}$, có thể bỏ qua outlier cực đoan trước khi update EMA.
+  \item \textbf{Cold start:} khi chưa đủ mẫu, fallback về static box gốc.
+  \item \textbf{State bị stale theo partition:} timeout để reset state hoặc đánh dấu degraded mode.
+\end{itemize}
+
+\section{Module 2 -- Shared Rule Optimizer}
+
+\subsection{Mục tiêu}
+Giải nút thắt RAM và CPU khi hệ thống chạy đồng thời 50+ luật DC. Thay vì mỗi luật có tree riêng, module gom các luật có cấu trúc tương thích vào chung nhóm.
+
+\subsection{Cách hoạt động}
+
+\begin{enumerate}
+  \item \textbf{Chuẩn hóa luật:} parse từng DC thành hai phần: equality predicates và inequality predicates.
+  \item \textbf{Greedy Grouping:} duyệt lần lượt các luật, gom những luật có cùng equality key vào cùng nhóm.
+  \item \textbf{Xây không gian dùng chung:} với mỗi nhóm, hợp nhất các chiều bất phương trình thành không gian $K$ chiều. Chỉ giữ nhóm hợp lệ nếu $K \leq K_{\max}$ (mặc định $K_{\max} = 5$).
+  \item \textbf{Infinite Padding:} nếu luật không dùng một chiều nào, chiều đó được gán bound là $[-\infty, +\infty]$. Nhờ vậy nhiều luật khác nhau vẫn cùng sống trong một KD-tree mà không làm sai logic.
+  \item \textbf{Materialize ActiveBox:} với mỗi luật sau tối ưu, xuất ActiveBox gồm \{group\_id, rule\_id, equality\_signature, dimensions, padded\_bounds, feature\_mapping, priority\}.
+\end{enumerate}
+
+Module nên chạy lại khi tập luật thay đổi, không nhất thiết trên từng event.
+
+\section{Module 3 -- Rapidash: Batched Traversal và Box Dropping}
+
+\subsection{Mục tiêu}
+Tìm candidate violations nhanh trên dữ liệu trong pane bằng cách biến bài toán dò vi phạm logic thành truy vấn không gian. Tránh brute-force $O(N^2)$ bằng cấu trúc KD-tree.
+
+\subsection{Bulk Load per Pane}
+Khi pane close (watermark $\geq$ pane\_end): bulk load toàn bộ buffer $\rightarrow$ KD-tree tĩnh cân bằng. Thuật toán:
+\begin{enumerate}
+  \item Sắp xếp points theo chiều có range lớn nhất (argmax\_range).
+  \item Tách điểm tại median $\rightarrow$ left/right subtree.
+  \item Mỗi node lưu: bounding box (left\_lo, left\_hi, right\_lo, right\_hi).
+\end{enumerate}
+
+\subsection{Batched Traversal}
+Thay vì duyệt tree nhiều lần cho nhiều luật, hệ thống duyệt một lần và mang theo danh sách ActiveBoxes. Hộp nào không giao cắt với vùng không gian của nhánh hiện tại sẽ bị loại sớm (box dropping).
+
+\subsection{Thuật toán giao cắt}
+\begin{verbatim}
+Intersects(box, region_lo, region_hi):
+  for dim in range(len(region_lo)):
+    box_lo, box_hi = box.padded_bounds.get(dim, (-INF, +INF))
+    overlap_lo = max(region_lo[dim], box_lo)
+    overlap_hi = min(region_hi[dim], box_hi)
+    if overlap_lo > overlap_hi: return False  # PRUNE!
+  return True  # Cần duyệt
+\end{verbatim}
+
+\textbf{Worst case cho box dropping:} curse of dimensionality ($k > 10$), uniform data distribution, query region lớn, padding không phù hợp.
+
+Module stateless: chỉ thực hiện thuật toán truy vấn, sử dụng chỉ mục hiện có do Weever cập nhật.
+
+\section{Module 4 -- Weever: Pane-based Forest}
+
+\subsection{Mục tiêu}
+Quản lý vòng đời bộ nhớ không gian (KD-tree) theo kiến trúc rừng cây cắt lát (Pane-based Forest), đảm bảo cập nhật $O(1)$ khi cửa sổ trượt.
+
+\subsection{Cấu trúc}
+PaneForest = list[Pane] + panes\_by\_id: Dict[pane\_id $\rightarrow$ Pane].
+
+Mỗi Pane có: pane\_id, start\_time, end\_time, kdtree, is\_active, buffer.
+
+\subsection{Lifecycle của Pane}
+
+\begin{enumerate}
+  \item \textbf{Pane mới được tạo:} is\_active = True. Events được thu thập vào buffer. Chưa có KD-tree.
+  \item \textbf{Watermark advance đến pane\_end:} pane\_close() $\rightarrow$ bulk\_load(buffer) $\rightarrow$ kdtree. is\_active = False. Pane trở thành read-only.
+  \item \textbf{Watermark advance đến window boundary:} DROP pane = $O(1)$.
+\end{enumerate}
+
+\subsection{O(1) DROP Pane}
+\begin{verbatim}
+self.panes = [p for p in self.panes if p.pane_id != pane_id]
+self.panes_by_id.pop(pane_id, None)
+if self.tombstone_mgr:
+    self.tombstone_mgr.drop_pane(pane_id)
+\end{verbatim}
+
+So sánh: Weever gốc cần $O(\log N)$ per insert/delete với complex rebalancing; WAVES dùng pane-incremental: buffer $\rightarrow$ bulk load, và $O(1)$ DROP.
+
+\section{Module 5 -- Watermark và Alert Decision Layer}
+
+\subsection{Mục tiêu}
+Quản lý pending violations và đưa ra quyết định alert trong điều kiện dữ liệu có thể đến trễ hoặc sai thứ tự.
+
+\subsection{Alert State Machine}
+
+\begin{center}
+PROVISIONAL $\xrightarrow{\text{WM passes, no retraction}}$ FINAL
+
+PROVISIONAL $\xrightarrow{\text{retraction arrives}}$ RETRACTED
+\end{center}
+
+\subsection{Hai pha ra quyết định}
+
+\begin{itemize}
+  \item \textbf{Pha 1 -- Provisional Verdict:} tạo provisional alert ngay khi candidate violation được tạo. Alert chưa phải kết luận cuối vì hệ thống vẫn chờ khả năng late data đến.
+  \item \textbf{Pha 2 -- Final Verdict:} khi watermark $\geq$ window\_end + wait\_for\_late, hệ thống coi window đã đủ hoàn chỉnh. Mọi provisional alert chưa bị bác bỏ được nâng lên FINAL.
+\end{itemize}
+
+\subsection{Sink Strategy: Provisional Only}
+Chỉ FINAL alerts trigger sink actions. Provisional alerts là ``early warning'' cho ops, không bao giờ trigger sink. Nhờ vậy không có rollback scenario vì sink không act trên PROVISIONAL.
+
+\subsection{AlertStateStore}
+Key = alert\_id = ``\{rule\_id\}:\{entity\_key\}:\{window\_id\}:\{seq\_num\}''. Giá trị = danh sách candidate violations và trạng thái hiện tại.
+
+\section{Module 6 -- Late Handler và Tombstone Filter}
+
+\subsection{Mục tiêu}
+Xử lý bốn loại dữ liệu lỗi trong streaming và quản lý ghost/retracted records.
+
+\subsection{Bốn loại dữ liệu lỗi}
+
+\begin{itemize}
+  \item \textbf{Type 1 -- Malformed Event:} parse lỗi $\rightarrow$ emit đến DLQ. Không block pipeline.
+  \item \textbf{Type 2 -- Out-of-Order Event:} đến đúng thời gian, sai thứ tự $\rightarrow$ route đến đúng window dựa trên event-time. Xử lý bình thường.
+  \item \textbf{Type 3 -- Late Event:} đến sau khi pane/window đã close $\rightarrow$ kiểm tra ngưỡng: watermark $>$ window\_end + wait\_late? Nếu YES: DROP; nếu NO: LateHandler xử lý.
+  \item \textbf{Type 4 -- Ghost / Retracted Event:} đã retract $\rightarrow$ TombstoneFilter: $O(1)$ lookup tại lá KD-tree, bỏ qua trong traversal.
+\end{itemize}
+
+\subsection{LateHandler Flow}
+\begin{enumerate}
+  \item Tìm alerts liên quan đến late event qua AlertStateStore.get\_by\_event\_id.
+  \item Kiểm tra late\_event có invalidate alert không.
+  \item Retract alert nếu invalid.
+  \item Re-check: late event có tạo violation mới không?
+  \item Insert vào pane đã close (re-check KD-tree traversal).
+\end{enumerate}
+
+\subsection{TombstoneManager}
+$O(1)$ lookup per pane. Gắn vòng đời với pane\_id. drop\_pane = $O(1)$ clear. Ưu tiên cài bằng Bloom Filter hoặc Cuckoo Filter để tra cứu $O(1)$ và tiết kiệm RAM.
+
+\section{Module 7 -- Mô tả chi tiết luồng end-to-end}
+
+\subsection{Luồng Normal (dữ liệu đến đúng thứ tự)}
+
+Trigger: event mới đi vào với event\_time $\geq$ current\_watermark.
+
+\begin{enumerate}
+  \item WindowManager nhận event, gán vào pane hiện hành. Buffer được cập nhật.
+  \item BasicDQChecks chạy null/range/type checks. Output: clean record + basic metadata.
+  \item StatisticalContextEngine cập nhật EMA, tính $\sigma$.
+  \item ElasticBoxGenerator sinh ActiveBoxes từ $\sigma$ và luật tĩnh.
+  \item Rapidash BatchedTraversal duyệt forest, trả về candidate violations.
+  \item DecisionLayer tạo provisional alert, upsert vào AlertStateStore.
+  \item Weever insert event vào pane hiện hành (buffer).
+\end{enumerate}
+
+Khi watermark $\geq$ pane\_end: pane\_close() $\rightarrow$ bulk\_load $\rightarrow$ kdtree.
+
+Khi watermark $\geq$ window\_end + wait\_late: finalize alerts $\rightarrow$ emit FINAL alerts.
+
+\subsection{Luồng Late Data}
+
+Trigger: event đến với event\_time $<$ current\_watermark nhưng vẫn trong ngưỡng wait\_late.
+
+\begin{enumerate}
+  \item LateHandler kiểm tra ngưỡng.
+  \item AlertStateStore tìm provisional alerts liên quan.
+  \item Nếu late event invalidate alert: retract, add tombstone.
+  \item Re-check late event qua Rapidash traversal.
+  \item Weever insert vào pane cũ (đã close).
+  \item Tiếp tục chờ watermark finalize.
+\end{enumerate}
+
+\subsection{Luồng Window Slide}
+
+Trigger: watermark clock vượt ranh giới bước trượt.
+
+\begin{enumerate}
+  \item WindowManager xác định pane cũ nhất đã hết hạn.
+  \item Weever DROP toàn bộ pane = $O(1)$. TombstoneManager drop cùng lúc.
+  \item WindowManager đóng gói cửa sổ cũ.
+  \item Mọi provisional alerts còn hiệu lực trong cửa sổ $\rightarrow$ FINAL.
+  \item Output Manager xuất meta-stream của window.
+\end{enumerate}

@@ -1,0 +1,186 @@
+Slide 1
+
+Trước khi bắt tay vào WAVES, em đã thực hiện một cuộc khảo sát toàn diện để hiểu rõ bức tranh nghiên cứu và sản phẩm hiện tại. Trên màn hình là tổng hợp 14 dự án từ cả nghiên cứu lẫn thực tiễn công nghiệp, được phân thành 4 nhóm theo góc tiếp cận. Em không chỉ đánh giá chúng với WAVES, mà đánh giá khách quan từng dự án: chúng làm được gì tốt, chúng phù hợp cho bài toán nào, và chúng đóng góp gì cho WAVES.
+
+Nhóm 1 — Công cụ Batch, tham chiếu DSL và metric-based:
+Nhóm thứ nhất gồm các công cụ thực tiễn công nghiệp, chạy theo mô hình Batch:
+Great Expectations và Soda Core là hai công cụ mã nguồn mở rất phổ biến. Great Expectations cung cấp cú pháp Expectation DSL rất trực quan bằng Python, hỗ trợ kiểm tra Null, uniqueness, value range, regex, và cross-column checks. Soda Core tổ chức checks dưới dạng YAML, metric-based: row count, null%, sum, avg, min/max, distinct count, regex, schema, freshness, với hỗ trợ 18+ nguồn dữ liệu. AWS Deequ đi xa hơn ở chỗ tự động sinh checks từ schema bằng Spark phân tán, tích hợp sâu với AWS Glue, S3, Redshift.
+Ba công cụ này rất mạnh trong môi trường kho dữ liệu (Data Warehouse). Tuy nhiên, chúng sinh ra để quét dữ liệu đã nằm yên trong kho — chạy lúc nửa đêm, phân tích lịch sử. Khi dữ liệu đến theo luồng, chúng không có khái niệm xử lý out-of-order hay late data. WAVES tham chiếu Great Expectations về cú pháp DSL và Soda Core về cách tổ chức metric-based checks, nhưng không dùng trực tiếp vì kiến trúc Batch không phù hợp.
+
+Nhóm 2 — Apache Griffin, bước chuyển nhẹ sang Streaming:
+Nhóm thứ hai là Apache Griffin — dự án hiếm hoi tiếp cận theo hướng Streaming từ sớm, kết nối được với Kafka và Kinesis, cung cấp 30+ built-in checks: accuracy, completeness, timeliness, profiling, uniqueness, dựa trên Spark Streaming. Đây là bước tiến quan trọng: Griffin cho thấy streaming DQ là có thể. Tuy nhiên, Griffin chỉ dừng lại ở các phép đo thống kê cơ bản, không hỗ trợ luật logic chéo dòng (Denial Constraints). Và dù là dự án mã nguồn mở được Apache tiếp nhận, Griffin hiện đã bị archived từ năm 2018. WAVES tham chiếu Griffin về cách kết nối Kafka cho streaming checks, nhưng kiến trúc DC engine hoàn toàn khác.
+
+Nhóm 3 — Các công trình nghiên cứu về Watermark và xử lý trễ:
+Nhóm thứ ba gồm các nghiên cứu nền tảng về xử lý thời gian trong stream. Bài báo Watermarks in Stream Processing (VLDB 2017) cung cấp cơ sở lý thuyết hoàn chỉnh về event-time, watermark generation, stragglers, và watermark lag, bao gồm cơ chế .emitOnMissedWatermark. ProbSlack (SIGMOD 2018) mô hình hóa độ trễ động bằng probabilistic bounds, tính expected slack và watermark confidence. Klink (SIGMOD 2021) giảm watermark lag đến 60% bằng progress-aware scheduling, phân tích root causes: stragglers, network delay, idle sources. The Dataflow Model (VLDB 2015) của Google là kinh thánh về event-time semantics, định nghĩa đầy đủ Window, Trigger, Accumulation (discarding/accumulating/retracting).
+Các nghiên cứu này không giải quyết trực tiếp bài toán kiểm tra luật logic chéo dòng, nhưng cung cấp nền tảng không thể thiếu về cách streaming system xử lý thời gian. WAVES dùng trực tiếp The Dataflow Model làm nền tảng watermark và ProbSlack/Klink để cấu hình hệ thống.
+
+Nhóm 4 — AI/ML và LLM, bước đi song song:
+Nhóm thứ tư là các phương pháp tiếp cận bằng học máy. Soda AI dùng ML anomaly detection trên time-series metrics, cho thấy 70% ít false positive hơn Prophet. Monte Carlo và Bigeye kết hợp ML-driven anomaly detection với lineage tracking và root cause analysis ở mức bảng. LLMatch (APWeb 2025) dùng LLM transformer để tự động phát hiện schema matching, rollup/drilldown. RTClean (InfoSci 2023) học Functional Dependencies từ live context để detect và fix anomalies trên luồng.
+Các phương pháp này rất mạnh ở việc phát hiện bất thường theo xu hướng và tự động học luật. Tuy nhiên, chúng gặp giới hạn khi cần kết luận tuyệt đối chính xác (deterministic), giải thích được bằng logic cụ thể, và mở rộng lên hàng trăm luật mà không bị "Lời nguyền số chiều". WAVES tham chiếu LLMatch cho việc dùng LLM sinh luật DC tự động — WAVES tương thích với LLM-generated rules, nhưng kiểm tra bằng engine riêng.
+
+Tổng kết: Bức tranh nghiên cứu hiện tại có đầy đủ các mảng: Batch DQ tools đã rất trưởng thành ở kho dữ liệu; Streaming DQ đã có Griffin nhưng chỉ dừng ở thống kê; Watermark semantics đã được nghiên cứu sâu về mặt lý thuyết; ML/LLM đang mở ra hướng tự động hóa. Tuy nhiên, có một khoảng trống cốt lõi chưa được lấp đầy: Kiểm tra luật Logic chéo dòng (Denial Constraints) trên luồng Streaming tốc độ cao mà không sập máy chủ vì O(N²). Đó là khoảng trống (Research Gap) khổng lồ mà WAVES sẽ giải quyết!
+
+
+Slide 2
+
+Để giải quyết bài toán hóc búa này, WAVES không phát minh lại bánh xe. WAVES được xây dựng trên nền tảng của 5 công trình nghiên cứu xuất sắc nhất thế giới trong 10 năm qua, bao gồm các bài báo từ Google, VLDB, SIGMOD và EDBT.
+
+Trụ cột 1 — Runtime & Windowing:
+Trụ cột đầu tiên là Stream DaQ (arXiv 2025). Đây là framework streaming DQ mới nhất, cung cấp cách chia cửa sổ (Windowing: tumbling/sliding/session) và xuất luồng siêu dữ liệu (Meta-stream) song song dữ liệu. WAVES mượn Stream DaQ làm Khung xương (Runtime): cách tổ chức luồng, windowing, và quality meta-stream.
+
+Trụ cột 2 — DC Engine bằng KD-Tree:
+Trụ cột thứ hai là Rapidash (VLDB 2024). Công trình này chứng minh rằng việc biến luật Logic thành Hộp Không Gian (Orthogonal Range Search) trên KD-Tree giúp tăng tốc độ tìm kiếm lên 84 lần so với Facet. WAVES lấy Rapidash làm Lõi Tra Cứu (Core Engine): DC parsing, KD-Tree box dropping, batched traversal.
+
+Trụ cột 3 — Incremental State Management:
+Trụ cột thứ ba là Weever (VLDB 2021). Dù Rapidash rất nhanh, nó bắt xây lại cây từ đầu mỗi khi dữ liệu thay đổi. Weever giải quyết bằng LT-Tree (AVL/Red-Black variant), hỗ trợ Insert/delete O(log N) tăng cường. WAVES không dùng nguyên bản Weever, mà nâng cấp thành Pane-based Forest để vứt dữ liệu cũ với chi phí O(1), giúp RAM không bao giờ bị phân mảnh.
+
+Trụ cột 4 — Watermark & Event-time Semantics:
+Trụ cột thứ tư là The Dataflow Model (VLDB 2015) của Google. Đây là kinh thánh về event-time semantics, định nghĩa đầy đủ Window, Trigger, Accumulation. WAVES áp dụng khái niệm Watermark để làm 'Vị Quan Tòa': phát cảnh báo ngay lập tức, nhưng vẫn chờ dữ liệu trễ mạng để tự động Rút lại (Retract) nếu báo oan.
+
+Trụ cột 5 — Benchmark Protocol:
+Trụ cột thứ năm là Icewafl (EDBT 2025). Đây là nghiên cứu mới nhất về fault injection cho streaming: inject delayed, out-of-order, drifted events vào luồng. Icewafl đề xuất pipeline 4 bước B1→B4 để tạo ground truth cho đánh giá DQ. WAVES dùng trực tiếp pipeline này làm quy trình thực nghiệm, đảm bảo kết quả đo lường có cơ sở khoa học.
+
+Tổng kết: WAVES không phải công cụ chắp vá. WAVES là sự Giao thoa hoàn hảo giữa Runtime streaming (Stream DaQ), DC Engine không gian (Rapidash), Incremental state (Weever), Event-time semantics (Google Dataflow), và Benchmark protocol (Icewafl). Sự kết hợp này lần đầu tiên đưa Denial Constraints lên môi trường Streaming thời gian thực một cách bền vững!
+
+Slide 3
+
+Ngoài 5 trụ cột chính, WAVES còn tham chiếu nhiều nghiên cứu bổ trợ từ cộng đồng:
+Bên cạnh The Dataflow Model (Google), em tham khảo thêm ProbSlack (SIGMOD 2018) về mô hình probabilistic bounds cho watermark lag, và Klink (SIGMOD 2021) về progress-aware scheduling giảm watermark lag 60%. Hai nghiên cứu này giúp em cấu hình Wait_for_late (ngưỡng chờ an toàn) dựa trên root causes thực tế của stragglers.
+Về Functional Dependencies, em tham khảo RTClean (InfoSci 2023) để hiểu cách dùng FDs cho streaming DQ. WAVES chọn DC (mạnh hơn FD) làm lõi, nhưng tương thích với LLM-generated rules — tham chiếu từ LLMatch (APWeb 2025).
+
+Cuối cùng, một câu hỏi thường trực: 'Bây giờ là kỷ nguyên của AI và LLM, tại sao WAVES lại chọn Denial Constraints thay vì Anomaly Detection?'. DC mang lại 3 lợi thế mà LLM không thể đáp ứng cùng lúc:
+Thứ nhất, **Deterministic (Quyết đoán tuyệt đối)**: DC đưa ra kết luận vi phạm 100% bằng logic toán học — không phải xác suất 'có thể bất thường'. Anomaly Detection chỉ đoán xu hướng, không xác định được vi phạm cụ thể.
+Thứ hai, **Composable (Tổ hợp được)**: Nhiều luật DC có thể kết hợp thành batch, gom nhóm không gian tối ưu → Shared Rule Optimizer khả thi. Anomaly Detection gặp 'Lời nguyền số chiều' ngay khi thêm luật thứ 2.
+Thứ ba, **Explainable (Giải thích được hoàn toàn)**: Khi phát hiện vi phạm DC, hệ thống trả lời chính xác 'Tài xế A vi phạm DC1 vì fare=200$ trong khi distance chỉ 2km, max_ratio=2.5x theo context hiện tại'. Anomaly Detection chỉ trả lời mờ hồ 'anomaly score=0.87'.
+Tổng kết: WAVES chọn DC vì nó **vừa chính xác như Rule-based, vừa tự thích nghi như ML**, với chi phí O(1) cho mỗi bản ghi, và lý do vi phạm hoàn toàn minh bạch cho con người!
+Các nghiên cứu từ VLDB, SIGMOD đến EDBT 2025 chính là những 'người khổng lồ' mà WAVES đang đứng trên vai. Mọi quyết định thiết kế của WAVES, từ cấu trúc bộ nhớ đến cách chấm điểm thực nghiệm, đều có cơ sở học thuật (Academic Backing) vững chắc!
+
+Slide 3b
+
+Trước khi đi vào khoảng trống và câu hỏi nghiên cứu, em xin dành một phút để giải đáp trực tiếp câu hỏi quan trọng nhất: Tại sao WAVES chọn Denial Constraints (DC) cho bài toán Stream Data Quality thay vì dùng các phương pháp khác?
+Câu trả lời nằm ở bản chất của bài toán thực tế. Khi một doanh nghiệp giao hàng hoặc taxi muốn kiểm tra chất lượng dữ liệu, họ cần trả lời chính xác câu hỏi: 'Chuyến xe này có bị gian lận hay không?' — không phải 'Chuyến xe này có vẻ bất thường không?'.
+DC cung cấp câu trả lời tuyệt đối chính xác bằng logic toán học: Nếu tài xế chạy 2km nhưng thu 200$ trong khi tất cả các tài xế khác cùng quãng đường chỉ thu tối đa 50$, thì hệ thống **khẳng định chắc chắn** đây là vi phạm — không có xác suất, không có ngưỡng mờ.
+Ba lợi thế cốt lõi: **(1) Deterministic**: Kết luận 100% bằng logic, không phải xác suất. **(2) Composable**: Các luật DC gom nhóm được thành batch không gian → Shared Rule Optimizer khả thi. **(3) Explainable**: Lý do vi phạm hoàn toàn minh bạch: 'Fare=200$, Distance=2km, ratio=100x, context_limit=50$'. Ba lợi thế này **không một phương pháp nào khác** (kể cả LLM) có thể đáp ứng đồng thời.
+Đó là lý do WAVES chọn DC làm lõi.
+
+Slide 4
+
+Em có nhận thấy 4 gaps khá lớn:
+Khoảng trống thứ nhất là Nút thắt cổ chai O(N²).
+Để tìm ra một chuyến xe gian lận giá cước, hệ thống truyền thống phải ghép cặp nó với toàn bộ các chuyến xe khác trong cửa sổ 10 phút. Cách tiếp cận Brute-force này khiến CPU quá tải ngay lập tức.
+
+Khoảng trống thứ hai là sự Cứng nhắc của Luật tĩnh trước hiện tượng Trôi dạt khái niệm (Concept Drift).
+Trong đời thực, giao thông luôn biến động. Nếu hệ thống cứ giữ khư khư một ngưỡng cố định (ví dụ: chạy quá 5 phút là lỗi), thì khi xảy ra bão tuyết hay kẹt xe diện rộng, hệ thống sẽ mù quáng báo lỗi khóa tài khoản hàng vạn tài xế. Tỷ lệ Báo động giả (False Positive) sẽ tăng vọt.
+
+Khoảng trống thứ ba là Nỗi oan của Dữ liệu Trễ (Late Data Dilemma).
+Trong môi trường Streaming thực tế, mạng 4G luôn chập chờn (Stragglers). Gói tin đến muộn hoặc sai thứ tự là chuyện như cơm bữa. Các hệ thống hiện tại rất ngây thơ: Thấy lỗi là chốt hạ luôn. Nếu thiếu cơ chế Cảnh báo tạm thời (Provisional) và Tự động Rút lại (Retraction) khi gói tin kẹt mạng bay về, hệ thống sẽ trừng phạt oan sai người dùng rất nhiều.
+
+Khoảng trống thứ tư là Số lượng luật Denial Constraints quá lớn (Curse of Dimensionality).
+Một doanh nghiệp không chỉ chạy 1 luật, họ chạy 50 luật. Nếu chúng ta nhét 50 thuộc tính vào một cây không gian, cây sẽ phình to khủng khiếp. Mọi thuật toán cắt tỉa (Box Dropping) đều trở nên vô dụng, và tốc độ tìm kiếm lại rớt thê thảm về O(N). Hiện chưa có kiến trúc Streaming nào tích hợp thành công việc gom nhóm luật (Hash partition, k_max cap) để giải bài toán này.
+
+Tổng kết: 4 khoảng trống này chính là 'Bức tường lửa' ngăn cản các doanh nghiệp áp dụng Data Quality theo thời gian thực. Và dự án WAVES được sinh ra với sứ mệnh duy nhất: Đập tan cả 4 bức tường này bằng 4 Câu hỏi Nghiên cứu (Research Questions) tiếp theo!
+
+Slide 5
+
+Để lấp đầy những khoảng trống chí mạng vừa nêu, đồ án tập trung giải quyết 4 câu hỏi nghiên cứu cốt lõi sau đây:
+Thứ nhất, làm sao để phá vỡ giới hạn O(N²) khi rà soát Ràng buộc chéo trên luồng? Mục tiêu là hệ thống phải giữ vững thông lượng xử lý ngay cả khi kích thước cửa sổ phình to và dữ liệu liên tục được nạp/xóa mỗi giây.
+Thứ hai, làm sao bảo vệ độ chính xác của hệ thống cảnh báo? Tức là làm sao giữ điểm F1 luôn cao khi thế giới thực liên tục xảy ra hai hiện tượng: trôi dạt dữ liệu do kẹt xe, bão tuyết; và dữ liệu đến trễ, sai thứ tự do mạng chập chờn.
+Thứ ba, về khả năng mở rộng. Khi doanh nghiệp tăng từ 3 luật lên 50 hoặc 100 luật phức tạp, hệ thống phải làm gì để không bị cạn kiệt RAM và không phải đập đi xây lại toàn bộ chỉ mục không gian sau mỗi lần cửa sổ trượt?
+Cuối cùng, sự đánh đổi cấu hình. Các siêu tham số cốt lõi như kích thước lát cắt, tốc độ thích nghi của thuật toán, và giới hạn số chiều sẽ tác động thế nào đến hiệu năng lẫn chất lượng cảnh báo? Đâu là phương pháp để dò tìm ra 'điểm ngọt' vận hành tối ưu nhất cho từng kịch bản thực tế?
+Bốn câu hỏi này chính là kim chỉ nam để thiết kế ra kiến trúc WAVES ở phần tiếp theo.
+
+Slide 6
+
+Mở đầu bằng một câu chuyện cụ thể. Giả sử một tài xế xe công nghệ hoàn thành chuyến đi lúc 10:00:05 sáng — dữ liệu này sẽ đi qua 5 trạm kiểm tra của WAVES, như một chiếc xe đi qua 5 trạm thu phí trên đường cao tốc. Mỗi trạm có một nhiệm vụ riêng, và nếu xe không vượt qua được, hệ thống sẽ phát cảnh báo. Hãy cùng đi theo chiếc xe này.
+
+Trạm 1 — Tiếp nhận dữ liệu:
+Trạm đầu tiên là Tiếp nhận. Chiếc xe — tức gói dữ liệu — đổ vào hệ thống. WAVES kiểm tra: Dữ liệu có đúng định dạng không? Các trường (mã tài xế, tọa độ, giá cước, thời gian) có đầy đủ không? Nếu thiếu hoặc sai, nó bị loại ngay.
+Đồng thời, WAVES đóng dấu thời gian sự kiện thực tế (Event Time): 'Chuyến xe này thực sự xảy ra lúc 10:00:05.' Nếu do kẹt mạng, gói tin đến máy chủ lúc 10:00:12, hệ thống vẫn ghi nhận nó xảy ra lúc 10:00:05 — đây là nguyên tắc Event Time trong streaming. Tín hiệu 'gói tin đến muộn' được bắn sang Trạm 5 để hệ thống biết cần chờ thêm.
+
+Trạm 2 — Cửa sổ trượt:
+Trạm thứ hai là Cửa sổ. WAVES không kiểm tra từng chuyến xe một cách lẻ loi, mà gom chúng thành các 'lát cắt thời gian' — gọi là Pane. Ví dụ: Pane thứ 1 chứa các chuyến xe từ 10:00:00 đến 10:00:59, Pane thứ 2 từ 10:01:00 đến 10:01:59, cứ thế trượt mỗi phút. Mỗi Pane sẽ được kiểm tra luật riêng.
+Tại đây, các lỗi định dạng đơn giản như 'fare = null' hoặc 'fare âm' được quét nhanh. Nếu phát hiện, bản ghi bị loại sớm — không cần đưa vào kiểm tra phức tạp.
+
+Trạm 3 — Vẽ hộp vi phạm:
+Trạm thứ ba là 'Bộ não'. Thay vì kiểm tra từng xe với tất cả các xe khác (cách cũ rất chậm), bộ não của WAVES làm việc thông minh hơn:
+Đầu tiên, nó đo xem 'đường phố hôm nay đông đúc hay thông thoáng?' bằng thuật toán EMA — Phương sai σ². Nếu trời mưa to, phương sai cao, hệ thống hiểu: 'À, mọi người đều chạy chậm, bình thường thôi.' Nếu trời nắng, phương sai thấp, hệ thống hiểu: 'Đường thông, ai chậm là đáng nghi.'
+Tiếp theo, nó vẽ một 'Hộp giới hạn' (Elastic Box) cho mỗi luật. Ví dụ: Luật DC1 nói 'Fare/Distance không được vượt quá ngưỡng.' Bộ não vẽ hộp: distance từ 0–5km, fare từ $50–$300. Nếu kẹt xe, hộp tự nở ra (phạm vi lớn hơn). Nếu đường thông, hộp tự thu hẹp (phạm vi nhỏ hơn).
+Cuối cùng, nếu có 50 luật, nó không vẽ 50 hộp riêng lẻ — mà gom nhóm các hộp chồng lấn vào chung một cây để tiết kiệm bộ nhớ.
+
+Trạm 4 — Tìm vi phạm:
+Trạm thứ tư là 'Tra cứu không gian' — đây là trái tim tốc độ của WAVES. Các Hộp vi phạm được thả vào một 'Rừng cây' (Pane-based Forest). Mỗi cây chỉ chứa dữ liệu của một Pane — khi Pane hết hạn, cả cây bị vứt đi bằng một lệnh O(1), không cần xóa từng lá.
+Chiến thuật tìm kiếm như sau: Thả hộp vi phạm từ trên xuống. Nếu hộp không chạm vào một nhánh cây, cả nhánh đó bị bỏ qua ngay — không cần duyệt tiếp. Chỉ những nhánh mà hộp đi qua mới cần kiểm tra. Nhờ vậy, tốc độ tìm kiếm từ O(N²) giảm xuống O(N log N).
+Quay lại câu chuyện tài xế: Chiếc xe có fare=200$, distance=2km. Hộp DC1 kiểm tra và thấy: $200 / 2km = $100/km — cao hơn ngưỡng. Đây là Ứng viên Vi phạm (Candidate Violation).
+
+Trạm 5 — Phán quyết và xử lý trễ:
+Trạm cuối cùng là 'Tòa án'. Ngay khi phát hiện ứng viên, WAVES không đợi — mà lập tức gửi Cảnh báo Tạm thời (Provisional Alert) ra Dashboard để vận hành viên biết và theo dõi. Đồng thời, hệ thống bắt đầu đếm thời gian.
+Có 2 kịch bản xảy ra:
+Kịch bản A — Qua Watermark: Sau khi chờ đủ ngưỡng an toàn (ví dụ: 2 phút), không có dữ liệu trễ nào minh oan. WAVES chốt hạ: 'Xác nhận vi phạm' — đây là Lỗi chính thức. Pane cũ được dọn dẹp, RAM giải phóng.
+Kịch bản B — Dữ liệu trễ bay về: 1 phút sau, một gói tin bị kẹt mạng bay về cho thấy tài xế bị kẹt ở trạm BOT, giá cước cao là vì phí đường chứ không phải gian lận. WAVES làm 2 việc: (1) Rút lại cảnh báo (Retraction) — xóa Provisional Alert khỏi Dashboard. (2) Lưu dấu vân tay (fingerprint) gói tin vào Bia mộ (Tombstone) — từ nay cây KD-Tree sẽ 'nhìn thấy' gói tin này và bỏ qua, không báo oan nữa.
+
+Tóm tắt cấu trúc:
+Kiến trúc WAVES gồm 5 trạm xử lý liên hoàn: Tiếp nhận → Cửa sổ → Vẽ hộp → Tìm vi phạm → Phán quyết. Toàn bộ hệ thống chạy song song 2 luồng: Luồng Dữ liệu (nét liền) đi từ Trạm 1 đến Trạm 4, và Luồng Điều khiển (nét đứt) đi qua Trạm 5 để điều phối các tín hiệu: Provisional, Finalize, Retraction, Slide, Skip. Nhờ chia tách rõ ràng này, mỗi trạm có thể hoạt động độc lập, và cảnh báo có thể đến tay vận hành viên trong 0 mili-giây — mà vẫn đảm bảo tính đúng đắn nhờ cơ chế chờ của Watermark.
+
+Slide 7
+
+Rào cản lớn nhất để mang các phép kiểm tra chéo lên luồng dữ liệu chính là nút thắt cổ chai O(N²). Nếu áp dụng cách đối chiếu từng chuyến xe theo kiểu brute-force, hệ thống streaming sẽ sụp đổ ngay lập tức do quá tải.
+Để phá vỡ nút thắt này, WAVES sử dụng lõi tra cứu KD-Tree, đưa tốc độ về O(N log N). Chiến thuật ở đây là dịch các luật logic thành các vùng không gian hình học. Ví dụ với luật DC1 'chuyến đi ngắn hơn nhưng thu tiền đắt hơn', hệ thống sẽ tạo ra một Hộp vi phạm (Bounding Box). Khi thả hộp này vào cây, cơ chế 'Rụng hộp' sẽ tự động cắt tỉa và loại bỏ hẳn các nhánh không gian không giao cắt, giúp ta bỏ qua hàng vạn phép tính thừa mà không cần đối chiếu từng chiếc xe một.
+
+Sơ đồ minh họa thuật toán Box Dropping trên KD-Tree:
+Ví dụ: Luật DC1 → Hộp vi phạm [distance: 0km–5km] × [fare: $50–$300]
+Cây KD-Tree với các điểm (distance, fare):
+Root (split by distance)
+  [0km–2.5km]                    [2.5km–5km]
+  /    |    \                     /    |    \
+ Xe A  Xe B  Xe C                Xe D  Xe E  Xe F
+(1km, (2km, (0.5km,           (3km, (4km, (3.5km,
+ $80)  $150)  $400*)            $100)  $250)  $450*)
+→ Xe C và Xe F nằm trong hộp vi phạm → Candidate Violations
+→ Xe A, B, D, E bị cắt tỉa tại nhánh → tiết kiệm 4 lần so với brute-force
+
+Tuy nhiên, đặc thù của streaming là dữ liệu liên tục đào thải. Nếu áp dụng KD-Tree thông thường, việc tìm và xóa từng điểm trên một cây khổng lồ sẽ làm cây phình to, mất cân bằng và gây giật lag toàn hệ thống. WAVES khắc phục bằng kiến trúc 'Rừng cây cắt lát' (Pane-based Forest).
+Chia cửa sổ thời gian thành nhiều lát cắt (pane) nhỏ, mỗi lát chứa một cây độc lập. Khi phần dữ liệu cũ hết hạn, hệ thống không đi xóa từng lá, mà dùng đúng một lệnh để vứt bỏ toàn bộ cái cây cũ đó với chi phí O(1). Sự kết hợp KD-Tree + Pane-based Forest giúp WAVES vừa tra cứu siêu tốc O(N log N), vừa dọn dẹp RAM sạch sẽ với O(1) mà không bao giờ làm nghẽn luồng xử lý.
+
+Slide 8
+
+Phương pháp tiếp theo WAVES đề xuất giải quyết một nhược điểm chí mạng của các hệ thống kiểm tra dữ liệu hiện nay: Báo động giả do luật tĩnh.
+Nếu dùng một ngưỡng cố định, ví dụ 'Lệch 5 phút là lỗi', thì khi thành phố xảy ra mưa bão hoặc kẹt xe, mọi tài xế đều đi chậm. Hệ thống sẽ mù quáng báo lỗi oan hàng vạn chuyến đi. Đây gọi là hiện tượng Trôi dạt khái niệm (Concept Drift).
+Để khắc phục, WAVES giới thiệu cơ chế Hộp Truy vấn Động (Elastic Box) kết hợp với thuật toán Thống kê EMA (Exponential Moving Average). Hệ thống không bắt lỗi bằng hằng số tĩnh, mà đo lường 'mức bình thường hiện tại'. Lấy ví dụ luật DC2: 'Cùng tuyến đường, thời gian chạy chênh lệch quá mức bình thường'.
+Bộ não EMA chạy ngầm để tính toán độ hỗn loạn giao thông theo thời gian thực, cập nhật Phương sai σ² liên tục với công thức: EMA_t = α × giá_trị_mới + (1 − α) × EMA_{t−1}. Hệ thống điều chỉnh kích thước Elastic Box dựa trên σ²: Box_width = base_threshold + β × σ (với β là hệ số nhân do người dùng đặt).
+
+Ví dụ minh họa:
+Buổi sáng thông thoáng: σ² thấp → Hộp Elastic Box thắt hẹp → bắt lỗi cực nhạy (precision cao)
+Khi bão tuyết ập đến: σ² tăng vọt → Hộp Elastic Box phình to ra → không báo oan ai cả
+Khi bão tan: σ² giảm dần → Hộp thu hẹp trở lại → hệ thống tự phục hồi độ nhạy
+
+Nhờ sự tự thích nghi này, WAVES giữ tỷ lệ báo động giả sát mức 0 mà không cần con người phải can thiệp sửa luật thủ công!
+
+Slide 9
+
+Một thách thức kinh điển của môi trường streaming là hiện tượng dữ liệu đến muộn do mạng 4G chập chờn. Nếu hệ thống vội vã kết luận, ta sẽ trừng phạt và khóa tài khoản oan người dùng. Nhưng nếu bắt hệ thống phải chờ đợi cho đến khi dữ liệu bay về đủ, ta lại đánh mất đi giá trị cốt lõi là tính thời gian thực.
+Để phá vỡ thế bế tắc này, WAVES đề xuất cơ chế Phán quyết Hai Pha, kết hợp Watermark, Tombstone và Retraction.
+Lấy ví dụ luật DC3: Hai xe đi cùng tuyến nhưng một xe có phí cầu đường cao bất thường. Rất có thể do xe kia bị kẹt mạng chưa gửi kịp gói tin trạm BOT. Thay vì bắt hệ thống phải đợi, ngay giây phút thấy bất thường, WAVES lập tức bắn ra một Cảnh báo tạm thời (Provisional [+1]) với độ trễ 0 mili-giây để đóng băng rủi ro, nhưng vẫn giữ nguyên trạng thái 'chưa chốt'.
+Sự vi diệu nằm ở chỗ: Nếu vài phút sau, gói tin kẹt mạng lết về tới máy chủ và minh oan cho tài xế, WAVES sẽ tự động phát ra lệnh Rút lại (Retraction [-1]). Lệnh này tự động triệt tiêu cảnh báo sai trước đó.
+Tombstone Filter hoạt động như sau: Thay vì lưu toàn bộ dữ liệu sai, nó chỉ lưu hash fingerprint (dấu vân tay) của dữ liệu đó với chi phí O(1). Khi cây KD-Tree nhận một gói tin mới, nó kiểm tra fingerprint qua Bloom Filter trước. Nếu trùng khớp → gói tin bị 'tàng hình' (skip). Bloom Filter có xác suất dương tính giả nhỏ (điều chỉnh được bằng tham số m), nhưng **không bao giờ âm tính giả** — không bao giờ bỏ sót dữ liệu thật.
+Watermark đóng vai trò là chiếc đồng hồ báo hết giờ. Khi luồng dữ liệu đi qua ngưỡng chờ an toàn (Wait_for_late), Watermark chốt hạ các cảnh báo tạm thành Lỗi chính thức, đồng thời kích hoạt dọn dẹp pane cũ mà không hề chặn luồng xử lý chính. Cơ chế này giúp WAVES vừa có tốc độ phản ứng tức thời (0ms với Provisional), vừa đảm bảo tính đúng đắn tuyệt đối trong dài hạn (sau khi Retraction kết thúc)!
+
+Slide 10
+
+Phương pháp đề xuất cuối cùng của WAVES giải quyết bài toán mở rộng quy mô. Trong thực tế, một doanh nghiệp không chỉ giám sát 1-2 luật mà phải gánh vác từ 50 đến 100 luật cùng lúc.
+Nếu mỗi luật ta xây một rừng cây KD-Tree riêng lẻ, máy chủ sẽ lập tức cạn kiệt RAM vì phải duy trì hàng trăm cây song song. Nhưng nếu cố gắng gộp cả 100 luật vào chung một cây khổng lồ, hệ thống sẽ dính 'Lời nguyền số chiều': thể tích hypercube phình to → mọi thuật toán cắt tỉa trở nên vô dụng → tốc độ tìm kiếm tuột dốc về O(N).
+Để vượt qua thế kẹt này, WAVES trang bị Shared Rule Optimizer - Bộ tối ưu hóa đa luật. Thuật toán Greedy Grouping hoạt động như sau: Với mỗi luật DC, ta trích xuất không gian thuộc tính (attribute space). Ví dụ: DC1 dùng (distance, fare), DC2 dùng (distance, duration, route). Greedy Grouping gom nhóm các luật có ít nhất 2 chiều chồng lấn thành một partition. Partition không được vượt quá k_max chiều (siêu tham số, mặc định 5). Luật nào vượt quá k_max sẽ bị cắt thành 2 luật con chồng lấn nhau.
+Sự đột phá nằm ở chiến thuật Duyệt theo lô (Batched Traversal). Thay vì lội cây 50 lần cho 50 luật, WAVES thả cùng lúc hàng chục 'Hộp vi phạm' (Batched Boxes) vào cây. Khi đi từ gốc xuống nhánh, nhánh nào không khớp với hộp nào, hộp đó sẽ tự động rụng đi. Nhiều hộp cùng rơi vào một nhánh → chia sẻ chi phí duyệt, tiết kiệm số lần truy cập bộ nhớ.
+Nhờ cơ chế chia sẻ chỉ mục này, số lượng cây cần duy trì giảm mạnh — từ N cây (mỗi luật 1 cây) xuống còn M partition (mỗi partition ≤ k_max chiều). WAVES tự tin mở rộng lên hàng trăm luật nghiệp vụ phức tạp mà không hề suy giảm tốc độ.
+
+Slide 11
+
+Để chứng minh tính ưu việt của WAVES, em xin trình bày bộ chỉ số đo lường thực nghiệm toàn diện. Bảng dưới đây cho thấy mỗi câu hỏi nghiên cứu (RQ) được đo lường bằng những chỉ số nào:
+Research Question | Metrics đo lường
+RQ1: Phá vỡ O(N²) | Throughput (events/s), P99 Latency (ms)
+RQ2: Bảo vệ F1 khi drift + late data | Precision, Recall, F1 (sau Retraction), FP Reduction Rate
+RQ3: Mở rộng 50–100 luật | Memory footprint (MB), Throughput vs số luật
+RQ4: Đánh đổi siêu tham số | P99 Latency, F1 khi thay đổi pane size, α EMA, k_max
+Baseline Ablation (để so sánh fair): Hệ thống sẽ đo lần lượt từng phiên bản cắt bỏ thành phần — từ NL-Stream (brute-force gốc) cho đến WAVES-Full (đầy đủ) — để chứng minh từng cải tiến đóng góp bao nhiêu vào kết quả cuối cùng.
+Về mặt hiệu năng, hệ thống đo Thông lượng (Throughput) và Độ trễ P99 để khẳng định tốc độ xử lý thời gian thực. Đồng thời, mức tiêu thụ RAM của từng thành phần như Rừng cây hay Bia mộ sẽ được theo dõi sát sao.
+Về độ chính xác, em sử dụng bộ ba chỉ số kinh điển là Precision, Recall và F1-Score. Điểm mấu chốt: các chỉ số này được tính toán **sau khi** hệ thống đã hoàn tất cơ chế Rút lại cảnh báo (Retraction) — nghĩa là chỉ những cảnh báo thực sự được Finalize mới được đưa vào đánh giá.
+Đặc biệt, FP Reduction Rate sẽ là bằng chứng thép cho thấy cơ chế Watermark + Tombstone đã cứu hệ thống khỏi bao nhiêu lệnh trừng phạt oan khi đối mặt với dữ liệu trễ mạng. Con số này sẽ trả lời trực tiếp cho Gap 3: Late Data Dilemma.

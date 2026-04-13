@@ -1,101 +1,225 @@
 \chapter{Mô hình hóa và giải pháp đề xuất}
 
 \section{Tổng quan kiến trúc}
+
 \noindent\textit{Nguồn tham chiếu:}
-\href{https://arxiv.org/abs/2506.06147}{Stream DaQ} \textbar{}
-\href{https://dl.acm.org/doi/10.14778/3659437.3659454}{Rapidash} \textbar{}
-\href{https://dl.acm.org/doi/10.14778/3717755.3717761}{Weever}
+\url{https://arxiv.org/abs/2506.06147} \textbar{}
+\url{https://dl.acm.org/doi/10.14778/3659437.3659454} \textbar{}
+\url{https://dl.acm.org/doi/10.14778/3717755.3717761}
 
-WAVES được đề xuất như một kiến trúc stream-first với chiến lược trạng thái lai. Các kiểm tra nhẹ được thực hiện inline trên luồng chính, trong khi các luật logic nặng được chuyển sang một constraint engine chạy song song. Cách tách lớp này giúp hệ thống không biến mọi bước xử lý trong pipeline thành điểm nghẽn.
+WAVES được đề xuất như kiến trúc stream-first với chiến lược trạng thái lai. Kiến trúc tổng thể gồm các thành phần chính:
 
-\begin{itemize}
-  \item Tiếp nhận dữ liệu từ message broker và chia thành các cửa sổ thời gian.
-  \item Thực hiện các light checks ngay trên luồng chính.
-  \item Đưa các luật logic đan chéo sang sidecar constraint engine.
-  \item Đánh giá kết quả bằng cơ chế delay-aware dựa trên watermark.
-  \item Phát ra quality meta-stream phục vụ quan sát và cảnh báo.
-\end{itemize}
+\begin{enumerate}
+  \item \textbf{StreamIngestion}: tiếp nhận dữ liệu từ CSV/JSON/Kafka, gán event-time và ingestion-time, chuẩn hóa schema.
+  \item \textbf{WindowManager}: gán bản ghi vào sliding window, tính delta insert/delete khi cửa sổ trượt.
+  \item \textbf{BasicDQChecks}: completeness, validity, range -- kiểm tra inline trên luồng chính, $O(1)$ per event.
+  \item \textbf{LogicalEngine}: duy trì ngữ cảnh thống kê bằng EMA, sinh elastic bounding boxes tự thích nghi với concept drift.
+  \item \textbf{SharedRuleOptimizer}: parse DC, gom nhóm luật có equality columns chung, infinite padding, sinh ActiveBox metadata.
+  \item \textbf{Rapidash (Batched Traversal)}: KD-tree bulk load per pane, duyệt nhiều box cùng lúc, box dropping prune nhánh không giao.
+  \item \textbf{DecisionLayer}: AlertStateStore, provisional/final/retraction alerts, TombstoneManager.
+  \item \textbf{Weever (Pane-based Forest)}: pane close = bulk load, O(1) DROP pane khi expire.
+  \item \textbf{WatermarkClock + AlertOutput}: watermark advance trigger pane close, chuyển provisional $\rightarrow$ final, phát meta-stream.
+\end{enumerate}
 
-Thay vì xây một runtime mới từ đầu, báo cáo đề xuất tái sử dụng tư duy và một phần cấu trúc của Stream DaQ để quản lý cửa sổ, bộ nhớ và meta-stream đầu ra. Phần lõi mặc định không đủ cho denial constraints sẽ được thay bằng engine chuyên biệt hơn.
+Luồng dữ liệu chính:
+\begin{center}
+Event $\rightarrow$ WindowManager $\rightarrow$ BasicDQChecks $\rightarrow$ LogicalEngine $\rightarrow$
+Rapidash $\rightarrow$ DecisionLayer $\rightarrow$ Weever/Watermark $\rightarrow$ AlertOutput
+\end{center}
+
+Rapidash đọc snapshot forest từ Weever (stateless về index). Decision nhận candidate từ Rapidash kèm watermark $\rightarrow$ cập nhật Weever. TombstoneManager gắn vòng đời với pane\_id.
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.96\linewidth]{waves_architecture.png}
-  \caption{Sơ đồ khái quát kiến trúc WAVES được chèn từ tài liệu DOCX gốc.}
-  \label{fig:waves-framework}
+  \includegraphics[width=0.96\linewidth]{architecture}
+  \caption{Kiến trúc tổng thể WAVES: StreamIngestion $\rightarrow$ WindowManager $\rightarrow$ BasicDQChecks + LogicalEngine $\rightarrow$ Rapidash $\rightarrow$ DecisionLayer $\rightarrow$ Weever (Pane-based Forest) + Watermark $\rightarrow$ AlertOutput. Mũi tên nét đứt thể hiện Rapidash đọc snapshot từ Weever.}
+  \label{fig:waves-arch}
 \end{figure}
 
-\section{Module 1 -- Incremental Constraint Engine}
-\noindent\textit{Nguồn tham chiếu:}
-\href{https://dl.acm.org/doi/10.14778/3659437.3659454}{Rapidash} \textbar{}
-\href{https://dl.acm.org/doi/10.14778/3717755.3717761}{Weever} \textbar{}
-\href{https://github.com/HPI-Information-Systems/Weever}{Weever Repo}
+\section{Research Questions}
 
-Module này là lõi xử lý các denial constraints, tức các luật logic cần đối chiếu giữa nhiều bản ghi. Thay vì quét toàn bộ cặp bản ghi theo cách brute-force, WAVES kế thừa ý tưởng từ Rapidash: ánh xạ mỗi bản ghi thành một điểm trong không gian đa chiều, còn điều kiện vi phạm được biểu diễn như một vùng truy vấn. Nhờ đó, hệ thống có thể tìm vi phạm hiệu quả hơn bằng cấu trúc chỉ mục không gian như kd-tree.
+Bốn câu hỏi nghiên cứu cốt lõi, mỗi câu gắn với giả thuyết, metrics và modules liên quan.
 
-Tuy nhiên, nếu chỉ dùng Rapidash theo kiểu dữ liệu tĩnh, mỗi lần cửa sổ trượt đi hệ thống sẽ phải xây lại chỉ mục từ đầu, gây lãng phí lớn. Để khắc phục, WAVES bổ sung cơ chế incremental update từ Weever: khi có bản ghi mới đi vào hoặc bản ghi cũ rời khỏi cửa sổ, hệ thống chỉ cập nhật phần chênh lệch cần thiết thay vì tính lại toàn bộ. Cách kết hợp này giúp module vừa giữ được tốc độ dò lỗi, vừa phù hợp với bản chất thay đổi liên tục của dữ liệu luồng.
+{\small
+\begin{longtable}{|L{0.06\textwidth}|L{0.28\textwidth}|L{0.24\textwidth}|L{0.20\textwidth}|L{0.12\textwidth}|}
+\hline
+\textbf{RQ} & \textbf{Câu hỏi} & \textbf{Giả thuyết} & \textbf{Metrics} & \textbf{Modules} \\
+\hline
+RQ1 & Throughput vượt nested-loop truyền thống? & KD-Tree + pane-based forest cắt tỉa không gian & Throughput, P99 latency, detection latency & Rapidash, Weever, Ingestion, Window \\
+\hline
+RQ2 & EMA + Tombstone/Retraction giữ F1 khi drift + late data? & Elastic box tự thu hẹp/mở rộng theo context; provisional vs final; retraction sửa false alert & Precision, Recall, F1 (sau retraction) & LogicalEngine, Decision, Tombstone \\
+\hline
+RQ3 & Mở rộng khi 50--100 luật DC? & Shared indexing + batched multi-rule traversal & Memory footprint, throughput & SharedRuleOptimizer, Rapidash batched \\
+\hline
+RQ4 & Trade-off siêu tham số? & $\alpha$ EMA, pane size, dimension cap ảnh hưởng khác nhau & P99 / avg latency, F1, RAM & ElasticBox, Weever, Optimizer \\
+\hline
+\end{longtable}
+}
 
-\section{Module 2 -- Delay-aware mechanism}
-\noindent\textit{Nguồn tham chiếu:}
-\href{https://dl.acm.org/doi/10.14778/3476311.3476389}{Watermarks in Stream Processing Systems} \textbar{}
-\href{https://research.google.com/pubs/archive/43864.pdf}{The Dataflow Model}
+\section{Các hệ thống đối chuẩn}
 
-Khác với các engine phát hiện vi phạm truyền thống, WAVES không xem mọi thiếu hụt tức thời là lỗi. Trong môi trường streaming, dữ liệu có thể đến muộn hoặc sai thứ tự, nên nếu kết luận quá sớm, hệ thống rất dễ tạo ra false alerts. Vì vậy, WAVES bổ sung cơ chế nhận thức độ trễ dựa trên watermark. Cơ chế này hoạt động theo hai pha.
+Phương pháp đánh giá dùng ablation study: tắt từng cơ chế cốt lõi để tạo các biến thể suy thoái của WAVES. Cách này công bằng hơn so với so sánh trực tiếp với framework ngoài.
 
-Ở pha 1 -- Provisional verdict, nếu một luật có dấu hiệu bị vi phạm nhưng vẫn còn khả năng do late data, hệ thống chỉ tạo cảnh báo tạm thời.
+{\small
+\begin{longtable}{|L{0.18\textwidth}|c|c|c|c|L{0.30\textwidth}|}
+\hline
+\textbf{Hệ thống} & \rotatebox{70}{KD-Tree} & \rotatebox{70}{Pane} & \rotatebox{70}{EMA} & \rotatebox{70}{Retraction} & \textbf{Mục đích} \\
+\hline
+NL-Stream & \ding{55} & \ding{55} & \ding{55} & \ding{55} & Chứng minh $O(N^2)$ là nút thắt cổ chai \\
+\hline
+Single-Tree-DaQ & \ding{51} & \ding{55} & \ding{55} & \ding{55} & Chứng minh 1 tree lớn $\rightarrow$ fragmentation/spike latency \\
+\hline
+Static-Box-DaQ & \ding{51} & \ding{51} & \ding{55} & \ding{51} & Chứng minh concept drift $\rightarrow$ false positives \\
+\hline
+WAVES-SingleRule & \ding{51} & \ding{51} & \ding{51} & \ding{51} & Tắt shared optimizer: mỗi luật = tree riêng; đo overhead \\
+\hline
+Buffer-Wait-DaQ & \ding{51} & \ding{51} & \ding{51} & \ding{55} & Chứng minh detection latency cao khi watermark như barrier \\
+\hline
+\textbf{WAVES-Full} & \ding{51} & \ding{51} & \ding{51} & \ding{51} & Performance ceiling \\
+\hline
+\end{longtable}
+}
 
-Ở pha 2 -- Final verdict, khi watermark đã đi qua mốc liên quan mà vi phạm vẫn còn tồn tại, hệ thống mới xác nhận đó là lỗi chính thức. Nhờ vậy, WAVES tách rõ giữa ``cảnh báo cần theo dõi'' và ``vi phạm đã xác nhận'', giúp giảm alert fatigue mà vẫn giữ được tính kịp thời của hệ thống.
+\textbf{Ghi chú ký hiệu:} \ding{51} = có \,|\, \ding{55} = không
 
-\section{Quality meta-stream}
-Đầu ra của WAVES không phải là sửa dữ liệu trực tiếp, mà là một luồng metadata song song. Mỗi sự kiện trong meta-stream có thể bao gồm: khoảng thời gian cửa sổ, định danh ràng buộc, tỷ lệ vi phạm, trạng thái cảnh báo và một số witness records để hỗ trợ điều tra nguyên nhân.
+\section{Các luật Denial Constraints (DC1--DC3)}
 
-\chapter{Thực nghiệm và đánh giá}
+Ba luật benchmark được sử dụng để đo khả năng phát hiện vi phạm logic.
 
-\section{Môi trường và dữ liệu}
-\noindent\textit{Nguồn tham chiếu:}
-\href{https://arxiv.org/abs/2506.06147}{Stream DaQ} \textbar{}
-\href{https://github.com/pathwaycom/pathway}{Pathway}
+{\small
+\begin{longtable}{|L{0.10\textwidth}|L{0.32\textwidth}|L{0.26\textwidth}|L{0.22\textwidth}|}
+\hline
+\textbf{DC} & \textbf{Ý nghĩa nghiệp vụ} & \textbf{Công thức} & \textbf{Modules chính} \\
+\hline
+DC1 & Hai xe cùng quãng đường, xe ngắn không fare cao bất thường. & $\neg(Puloc_s = Puloc_t \wedge dist_s < dist_t \wedge fare_s > fare_t)$ & Rapidash / KD-Tree \\
+\hline
+DC2 & Cùng tuyến, duration chênh ngoài biên độ giao thông hiện tại. & $\neg(Puloc_s = Puloc_t \wedge Doloc_s = Doloc_t \wedge |dur_s - dur_t| > \Delta_t)$ & LogicalEngine / ElasticBox \\
+\hline
+DC3 & Cùng tuyến, tolls chênh bất thường. & $\neg(Puloc_s = Puloc_t \wedge Doloc_s = Doloc_t \wedge tolls_s \gg tolls_t)$ & SharedRuleOptimizer / Rapidash \\
+\hline
+\end{longtable}
+}
 
-Bản thiết kế hiện tại giả định một kiến trúc stream processing tiêu chuẩn với Kafka hoặc broker tương đương ở lớp ingest. Lõi xử lý có thể được hiện thực bằng Python ở lớp orchestration, kết hợp engine hiệu năng cao ở lớp thấp hơn để tránh điểm nghẽn do runtime Python.
+\section{Fault Injection Pipeline}
 
-Về dữ liệu, báo cáo có thể tiếp tục sử dụng bộ NYC Taxi Trip Duration như một nguồn thực nghiệm ban đầu vì dữ liệu này có đặc trưng phù hợp cho bài toán streaming, bao gồm event-time, out-of-order behavior và không gian để mô hình hóa các quy tắc nghiệp vụ.
+NYC Taxi không có ground truth cho lỗi logic. Toàn bộ chương thực nghiệm dựa trên pipeline tiêm nhiễm có kiểm soát, tạo ra benchmark vừa có nhãn sai phạm rõ ràng, vừa mô phỏng được điều kiện streaming thực tế.
 
-\section{Fault injection}
-\noindent\textit{Nguồn tham chiếu:}
-\href{https://openproceedings.org/2025/conf/edbt/paper-240.pdf}{Icewafl}
+{\small
+\begin{longtable}{|L{0.12\textwidth}|L{0.28\textwidth}|L{0.34\textwidth}|L{0.16\textwidth}|}
+\hline
+\textbf{Bước} & \textbf{Nội dung} & \textbf{Kỹ thuật} & \textbf{Output} \\
+\hline
+B1 -- Base Prep & Chuẩn hóa schema, loại lỗi vật lý rõ ràng. & Filter null, format, range vượt ngưỡng vật lý. & Tập dữ liệu sạch \\
+\hline
+B2 -- Drift Injection & Mô phỏng concept drift (kẹt xe, bão tuyết). & Tăng trip\_duration theo time-of-day pattern. & Tập có drift \\
+\hline
+B3 -- Fraud Injection & Tiêm DC1--DC3 trên tỷ lệ nhỏ bản ghi. & Mutate fare\_amount, trip\_duration, tolls\_amount. & Ground truth positives \\
+\hline
+B4 -- Late/OoO & 90\% on-time, 10\% late 120--300s. & Sinh ingestion\_time khác event\_time, sort theo ingestion. & Benchmark stream \\
+\hline
+\end{longtable}
+}
 
-Để đánh giá đúng bài toán delay-aware, chỉ chạy trên dữ liệu sạch là chưa đủ. Cần chủ động tạo ra các tình huống delayed tuples, lệch thứ tự và nhiễu theo thời gian. Icewafl phù hợp cho mục đích này vì cho phép cấu hình các temporal errors thay vì chỉ chèn null hay sửa format.
-
-\section{Các kịch bản kiểm thử}
-\begin{itemize}
-  \item Clean stream: đo chi phí vận hành cơ sở khi không có vi phạm.
-  \item Logic error without delay: đo khả năng phát hiện vi phạm logic khi dữ liệu đến đúng thứ tự.
-  \item Network delay / late arrivals: đo khả năng giảm false alerts khi dữ liệu đúng nhưng đến muộn.
-\end{itemize}
+Nguồn: Icewafl \cite{edbt2025icewafl} (EDBT 2025, DOI: 10.48786/edbt.2025.64).
 
 \section{Chỉ số đo lường}
-Việc đánh giá nên được chia thành hai nhóm: hiệu năng hệ thống và chất lượng cảnh báo.
 
-\begin{table}[htbp]
-  \centering
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \renewcommand{\arraystretch}{1.2}
-  \begin{tabular}{|L{0.18\textwidth}|L{0.22\textwidth}|L{0.44\textwidth}|}
-    \hline
-    \textbf{Nhóm chỉ số} & \textbf{Chỉ số} & \textbf{Ý nghĩa} \\
-    \hline
-    Hiệu năng & Throughput & Số bản ghi hệ thống xử lý được mỗi giây \\
-    \hline
-    Hiệu năng & Processing latency & Thời gian xử lý trung bình cho mỗi cửa sổ \\
-    \hline
-    Hiệu năng & Memory footprint & Lượng trạng thái / bộ nhớ phải duy trì \\
-    \hline
-    Cảnh báo & False positive reduction rate & Mức giảm cảnh báo giả khi bật cơ chế delay-aware \\
-    \hline
-    Cảnh báo & Detection latency & Độ trễ từ lúc sự kiện xảy ra đến lúc ra final verdict \\
-    \hline
-  \end{tabular}
-  \caption{Nhóm chỉ số đánh giá đề xuất WAVES.}
-  \label{tab:metrics}
-\end{table}
+Hai nhóm metrics độc lập: hiệu năng hệ thống và chất lượng cảnh báo.
+
+{\small
+\begin{longtable}{|L{0.15\textwidth}|L{0.22\textwidth}|L{0.22\textwidth}|L{0.31\textwidth}|}
+\hline
+\textbf{Nhóm} & \textbf{Chỉ số} & \textbf{Ý nghĩa} & \textbf{Dùng trả lời} \\
+\hline
+Hiệu năng & Throughput & Số bản ghi xử lý được mỗi giây & RQ1, RQ3 \\
+\hline
+Hiệu năng & P99 Latency & Latency ở percentile 99 & RQ1, RQ4 \\
+\hline
+Hiệu năng & Detection Latency & Thời gian từ violation $\rightarrow$ final alert & RQ2 \\
+\hline
+Hiệu năng & Memory Footprint & RAM phân biệt active/cache/tombstone & RQ3, RQ4 \\
+\hline
+Cảnh báo & Precision & TP/(TP+FP) sau retraction & RQ2, RQ4 \\
+\hline
+Cảnh báo & Recall & TP/(TP+FN) & RQ2, RQ4 \\
+\hline
+Cảnh báo & F1 Score & $2PR/(P+R)$ & RQ2, RQ4 \\
+\hline
+Cảnh báo & FP Reduction Rate & $(FP_{\text{no\_delay}} - FP_{\text{delay}})/FP_{\text{no\_delay}}$ & RQ2 \\
+\hline
+\end{longtable}
+}
+
+\textbf{Lưu ý chấm điểm trong streaming có retraction:} không chốt Precision/Recall chỉ dựa trên provisional alerts [+1]. Một cảnh báo chỉ được xem là còn tồn tại nếu sau giai đoạn quan sát nó không bị triệt tiêu bởi tín hiệu retraction [--1].
+
+\section{Sensitivity Analysis (E1--E3)}
+
+Ngoài benchmark chính, ba thực nghiệm độ nhạy chỉ ra vùng tham số tối ưu.
+
+{\small
+\begin{longtable}{|L{0.10\textwidth}|L{0.22\textwidth}|L{0.18\textwidth}|L{0.18\textwidth}|L{0.22\textwidth}|}
+\hline
+\textbf{Exp} & \textbf{Tham số} & \textbf{Giữ cố định} & \textbf{Metrics} & \textbf{Mong đợi} \\
+\hline
+E1 & Pane size: 30s/1m/5m/10m & Window 10 phút & P99, avg latency, throughput & Pane nhỏ: nhiều overhead; pane lớn: tree lớn, box dropping kém. Sweet spot: 1--5 phút. \\
+\hline
+E2 & $\alpha$ (EMA): 0.01/0.05/0.1/0.2 & Tập có drift & Precision, Recall, F1 & $\alpha$ nhỏ: thích nghi chậm, false positives khi drift; $\alpha$ lớn: over-adapt. Sweet spot: 0.05. \\
+\hline
+E3 & $k_{\max}$: 2/3/5/10 & 100 luật DC & RAM, throughput & $k_{\max}$ nhỏ: box dropping hiệu quả; $k_{\max}$ lớn: curse of dimensionality. DC1--DC3 chỉ cần $k=2$. \\
+\hline
+\end{longtable}
+}
+
+\chapter{Thực nghiệm và đánh giá chi tiết}
+
+\section{Môi trường và dữ liệu}
+
+Tập dữ liệu nền: NYC Taxi Yellow Cab (CSV/Parquet). Các trường ưu tiên: tpep\_pickup/dropoff\_datetime, PULocationID, DOLocationID, trip\_distance, fare\_amount, total\_amount, trip\_duration, tolls\_amount, RatecodeID.
+
+Bản thiết kế giả định kiến trúc stream processing tiêu chuẩn với Kafka ở lớp ingest. Lõi xử lý có thể hiện thực bằng Python kết hợp engine hiệu năng cao ở lớp thấp hơn để tránh điểm nghẽn do runtime Python.
+
+\section{Các kịch bản kiểm thử}
+
+\begin{itemize}
+  \item \textbf{Clean stream}: đo chi phí vận hành cơ sở khi không có vi phạm.
+  \item \textbf{Logic error without delay}: đo khả năng phát hiện vi phạm logic khi dữ liệu đến đúng thứ tự.
+  \item \textbf{Network delay / late arrivals}: đo khả năng giảm false alerts khi dữ liệu đúng nhưng đến muộn.
+\end{itemize}
+
+\section{Kết quả kỳ vọng theo từng RQ}
+
+{\small
+\begin{longtable}{|L{0.10\textwidth}|L{0.36\textwidth}|L{0.44\textwidth}|}
+\hline
+\textbf{RQ} & \textbf{Kết quả kỳ vọng} & \textbf{Dấu hiệu thành công} \\
+\hline
+RQ1 & WAVES vượt NL-Stream về throughput và giữ P99 ổn định hơn Single-Tree. & Đường throughput cao và phẳng; ít latency spikes. \\
+\hline
+RQ2 & WAVES giữ Precision và F1 cao hơn Static-Box và Buffer-Wait trong dữ liệu có drift + late data. & False positives giảm mạnh; detection latency thấp. \\
+\hline
+RQ3 & WAVES mở rộng tốt hơn khi tăng số luật lên 50--100. & RAM tăng chậm; throughput không suy sụp. \\
+\hline
+RQ4 & Tồn tại vùng tham số tối ưu thay vì một cực trị duy nhất. & Biểu đồ sensitivity thể hiện vùng cân bằng rõ ràng. \\
+\hline
+\end{longtable}
+}
+
+\section{Benchmark Pipeline End-to-End}
+
+Quy trình chạy benchmark gồm bốn pha.
+
+{\small
+\begin{longtable}{|L{0.12\textwidth}|L{0.40\textwidth}|L{0.38\textwidth}|}
+\hline
+\textbf{Pha} & \textbf{Việc cần làm} & \textbf{Artefacts đầu ra} \\
+\hline
+Pha 1 & Chuẩn bị dữ liệu nền và sinh benchmark stream (B1--B4) & Dataset đã gắn ground truth, event time, ingestion time \\
+\hline
+Pha 2 & Chạy toàn bộ baselines và WAVES-Full trên cùng cấu hình phần cứng & Log runtime, metrics thô, alert streams \\
+\hline
+Pha 3 & Tổng hợp kết quả theo RQ & Bảng so sánh, biểu đồ, phần diễn giải \\
+\hline
+Pha 4 & Chạy sensitivity analysis (E1--E3) & Biểu đồ trade-off và cấu hình khuyến nghị \\
+\hline
+\end{longtable}
+}

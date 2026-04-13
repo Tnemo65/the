@@ -1,0 +1,11 @@
+{
+  "source": "data/fraud.parquet",
+  "drifts": [
+    {
+      "type": "sudden",
+      "hour": 18,
+      "multiplier": 2.0,
+      "affected": 197415
+    }
+  ]
+}

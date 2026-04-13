@@ -179,7 +179,7 @@ class WavePipeline:
             return []
 
         # Step 3: basic DQ
-        dq_results = self._dq_checker.check(event)
+        dq_results = self._dq_checker.check_event(event)
         # Emit meta on window boundary (simplified: check window_id change)
         for dq_result in dq_results:
             if dq_result.window_id:

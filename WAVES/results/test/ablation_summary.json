@@ -1,0 +1,1252 @@
+{
+  "waves_full": {
+    "42": {
+      "config": {
+        "baseline": "waves_full",
+        "seed": 42,
+        "total_events": 20000,
+        "warmup": 1000,
+        "elapsed_seconds": 23.739
+      },
+      "system": {
+        "throughput_events_per_sec": 842.49,
+        "avg_latency_ms": 0.487,
+        "p50_latency_ms": 0.27,
+        "p95_latency_ms": 1.673,
+        "p99_latency_ms": 3.512
+      },
+      "alerts": {
+        "total": 7119,
+        "provisional": 7119,
+        "final": 0,
+        "retraction": 0,
+        "by_dc": {
+          "DC1": 2373,
+          "DC2": 2373,
+          "DC3": 2373
+        }
+      },
+      "accuracy": {
+        "precision": 0.0101,
+        "recall": 0.0002,
+        "f1": 0.0005,
+        "tp": 24,
+        "fp": 2349,
+        "fn": 102707
+      },
+      "meta_events": 0,
+      "pane_stats": {
+        "p_1704067200000_1704067260000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067260000_1704067320000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067320000_1704067380000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067380000_1704067440000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067440000_1704067500000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067500000_1704067560000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067560000_1704067620000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067620000_1704067680000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067680000_1704067740000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067740000_1704067800000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067800000_1704067860000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067860000_1704067920000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067920000_1704067980000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704067980000_1704068040000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068040000_1704068100000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068100000_1704068160000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068160000_1704068220000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068220000_1704068280000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068280000_1704068340000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068340000_1704068400000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068400000_1704068460000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068460000_1704068520000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068520000_1704068580000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068580000_1704068640000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068640000_1704068700000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068700000_1704068760000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068760000_1704068820000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068820000_1704068880000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068880000_1704068940000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704068940000_1704069000000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069000000_1704069060000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069060000_1704069120000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069120000_1704069180000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069180000_1704069240000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069240000_1704069300000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069300000_1704069360000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069360000_1704069420000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069420000_1704069480000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069480000_1704069540000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069540000_1704069600000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069600000_1704069660000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069660000_1704069720000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069720000_1704069780000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069780000_1704069840000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069840000_1704069900000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069900000_1704069960000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704069960000_1704070020000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070020000_1704070080000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070080000_1704070140000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070140000_1704070200000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070200000_1704070260000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070260000_1704070320000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070320000_1704070380000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070380000_1704070440000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070440000_1704070500000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070500000_1704070560000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070560000_1704070620000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070620000_1704070680000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070680000_1704070740000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070740000_1704070800000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070800000_1704070860000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070860000_1704070920000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070920000_1704070980000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704070980000_1704071040000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071040000_1704071100000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071100000_1704071160000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071160000_1704071220000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071220000_1704071280000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071280000_1704071340000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071340000_1704071400000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071400000_1704071460000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071460000_1704071520000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071520000_1704071580000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071580000_1704071640000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071640000_1704071700000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071700000_1704071760000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071760000_1704071820000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071820000_1704071880000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071880000_1704071940000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704071940000_1704072000000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072000000_1704072060000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072060000_1704072120000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072120000_1704072180000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072180000_1704072240000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072240000_1704072300000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072300000_1704072360000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072360000_1704072420000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072420000_1704072480000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072480000_1704072540000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072540000_1704072600000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072600000_1704072660000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072660000_1704072720000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072720000_1704072780000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072780000_1704072840000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072840000_1704072900000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072900000_1704072960000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704072960000_1704073020000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073020000_1704073080000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073080000_1704073140000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073140000_1704073200000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073200000_1704073260000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073260000_1704073320000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073320000_1704073380000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073380000_1704073440000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073440000_1704073500000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073500000_1704073560000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073560000_1704073620000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073620000_1704073680000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073680000_1704073740000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073740000_1704073800000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073800000_1704073860000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073860000_1704073920000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073920000_1704073980000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704073980000_1704074040000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074040000_1704074100000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074100000_1704074160000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074160000_1704074220000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074220000_1704074280000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074280000_1704074340000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074340000_1704074400000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074400000_1704074460000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074460000_1704074520000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074520000_1704074580000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074580000_1704074640000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074640000_1704074700000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074700000_1704074760000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074760000_1704074820000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074820000_1704074880000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074880000_1704074940000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704074940000_1704075000000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075000000_1704075060000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075060000_1704075120000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075120000_1704075180000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075180000_1704075240000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075240000_1704075300000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075300000_1704075360000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075360000_1704075420000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075420000_1704075480000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075480000_1704075540000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075540000_1704075600000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075600000_1704075660000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075660000_1704075720000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075720000_1704075780000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075780000_1704075840000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075840000_1704075900000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075900000_1704075960000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704075960000_1704076020000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076020000_1704076080000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076080000_1704076140000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076140000_1704076200000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076200000_1704076260000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076260000_1704076320000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076320000_1704076380000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076380000_1704076440000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076440000_1704076500000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076500000_1704076560000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076560000_1704076620000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076620000_1704076680000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076680000_1704076740000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076740000_1704076800000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076800000_1704076860000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076860000_1704076920000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076920000_1704076980000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704076980000_1704077040000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077040000_1704077100000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077100000_1704077160000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077160000_1704077220000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077220000_1704077280000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077280000_1704077340000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077340000_1704077400000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077400000_1704077460000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077460000_1704077520000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077520000_1704077580000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077580000_1704077640000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077640000_1704077700000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077700000_1704077760000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077760000_1704077820000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077820000_1704077880000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077880000_1704077940000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704077940000_1704078000000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078000000_1704078060000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078060000_1704078120000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078120000_1704078180000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078180000_1704078240000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078240000_1704078300000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078300000_1704078360000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078360000_1704078420000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078420000_1704078480000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078480000_1704078540000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078540000_1704078600000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078600000_1704078660000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078660000_1704078720000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078720000_1704078780000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078780000_1704078840000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078840000_1704078900000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078900000_1704078960000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704078960000_1704079020000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079020000_1704079080000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079080000_1704079140000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079140000_1704079200000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079200000_1704079260000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079260000_1704079320000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079320000_1704079380000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079380000_1704079440000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079440000_1704079500000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079500000_1704079560000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079560000_1704079620000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079620000_1704079680000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079680000_1704079740000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079740000_1704079800000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079800000_1704079860000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079860000_1704079920000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079920000_1704079980000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704079980000_1704080040000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080040000_1704080100000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080100000_1704080160000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080160000_1704080220000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080220000_1704080280000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080280000_1704080340000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080340000_1704080400000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080400000_1704080460000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080460000_1704080520000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080520000_1704080580000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080580000_1704080640000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080640000_1704080700000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080700000_1704080760000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080760000_1704080820000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080820000_1704080880000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080880000_1704080940000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704080940000_1704081000000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081000000_1704081060000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081060000_1704081120000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081120000_1704081180000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081180000_1704081240000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081240000_1704081300000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081300000_1704081360000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081360000_1704081420000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081420000_1704081480000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081480000_1704081540000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081540000_1704081600000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081600000_1704081660000": {
+          "closed": true,
+          "kdtree": true,
+          "buffer_size": 0
+        },
+        "p_1704081660000_1704081720000": {
+          "closed": false,
+          "kdtree": false,
+          "buffer_size": 21
+        }
+      }
+    }
+  }
+}

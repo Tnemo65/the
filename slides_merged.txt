@@ -1,0 +1,1681 @@
+================================================================================
+WAVES — Streaming Data Quality Monitoring
+Slide Content Reference File
+Merged with Research Supplements - April 2026
+================================================================================
+
+================================================================================
+SLIDE 1 — Tiêu đề
+================================================================================
+
+WAVES: Window-based Adaptive Violation Detection with Elastic Streaming
+
+Đề tài: Khung giám sát chất lượng dữ liệu luồng có nhận thức độ trễ
+
+Nền tảng nghiên cứu: Stream DaQ | Rapidash | Weever | Watermark
+
+
+================================================================================
+SLIDE 2 — Bối cảnh nghiên cứu
+================================================================================
+
+Dữ liệu ngày nay không còn đợi lô để kiểm tra:
+- Message broker, CDC pipelines, clickstreams, IoT, giao dịch vận hành
+- Dữ liệu đẩy liên tục → DQ phải giám sát liên tục
+
+Ba lớp tiến hóa của DQ:
+- Lớp 1: Static DQ — kiểm tra một lần trên dữ liệu đã ổn định
+- Lớp 2: Incremental DQ — cộng dồn trạng thái theo luồng
+- Lớp 3: Stream-first DQ — giám sát ngay bên trong pipeline (WAVES hướng tới)
+
+Tính đúng đắn = không tách rời khỏi event-time và watermark
+
+Nguồn tham chiếu:
+- Stream DaQ (arxiv 2506.06147)
+- The Dataflow Model (Google Research)
+- Watermarks in Stream Processing Systems (VLDB)
+
+
+================================================================================
+SLIDE 3 — Phân tích Stream DaQ (Base 1)
+================================================================================
+
+Stream DaQ: Stream-First Data Quality Monitoring
+GitHub: https://github.com/Bilpapster/Stream-DaQ
+Ngôn ngữ: Python (Built on Pathway)
+
+ĐIỂM MẠNH:
+- 30+ built-in checks: null, range, type, regex, count, availability
+- Windowing: tumbling / sliding / session
+- Quality meta-stream: đầu ra là luồng metadata sống song song
+- 13.8x nhanh hơn Deequ trên window nhỏ
+- Python-native, tích hợp tốt với Pathway
+
+ĐIỂM YẾU (Research Gaps):
+- Không có cơ chế watermark để xử lý late arrivals
+- Không có denial constraint checking phức tạp
+  (chỉ kiểm tra cơ bản: null, range, type)
+- Hiệu suất giảm khi sliding windows có overlap > 90%
+
+Ý nghĩa với WAVES:
+→ Cung cấp runtime tư duy, cách tổ chức luồng, windowing
+→ WAVES giữ lại nhưng thay thế lõi phát hiện vi phạm
+
+
+================================================================================
+SLIDE 4 — Phân tích Rapidash (Base 2)
+================================================================================
+
+Rapidash: Efficient Detection of Constraint Violations (VLDB 2024)
+Ngôn ngữ: Java
+Kết quả: 84x nhanh hơn state-of-the-art (Facet)
+
+PHƯƠNG PHÁP CỐT LÕI — Orthogonal Range Search:
+- Mỗi tuple = 1 điểm trong không gian k-chiều
+- DC violation = điểm nằm trong vùng truy vấn (axis-aligned hypercube)
+- Dùng KD-Tree hoặc Range Tree để tìm nhanh thay vì O(N²)
+
+ĐỘ PHỨC TẠP:
+- General case: O(|R| · log^k |R|)
+- Single inequality: O(|R|) — tuyến tính!
+- Facet (baseline): O(|R|²)
+
+HỖ TRỢ OPERATORS:
+- Equality: =, ==, ≠, !=, <>
+- Inequality: <, >, <=, >=
+
+ĐIỂM YẾU (Research Gap):
+- Chỉ hoạt động trên DỮ LIỆU TĨNH (snapshot)
+- Mỗi window mới → rebuild tree = O(N) lãng phí
+- Không có incremental insert/delete
+- Không gắn với event-time và watermark
+
+Ý nghĩa với WAVES:
+→ WAVES dùng làm LÕI phát hiện vi phạm, không phải toàn bộ hệ thống
+→ Pane-based forest thay thế hash partition để streaming
+
+
+================================================================================
+SLIDE 5 — Phân tích Weever (Base 3)
+================================================================================
+
+Weever: Incremental Detection of Denial Constraint Violations
+Ngôn ngữ: Java | Hasso Plattner Institute
+
+VẤN ĐỀ GỐC TỪ RAPIDASH:
+- Rapidash xây tree từ đầu mỗi window
+- Khi window trượt 1 phút: 90% dữ liệu cũ vẫn hợp lệ
+- Phải rebuild tree → O(N) lãng phí
+
+GIẢI PHÁP CỦA WEEVER:
+- LT-Tree (Less-Than Tree) — mở rộng AVL/Red-Black
+- Insert/Delete chỉ cập nhật phần liên quan
+- Không cần rebuild toàn bộ
+- Predicate scheduling: ưu tiên predicate có selectivity thấp
+
+SO SÁNH:
+                    Rapidash         Weever
+Data Model          Static           Incremental
+Time Complexity     O(N log^k N)     O(log N) per update
+Updates             Full rebuild     In-place
+Space               O(N log^k N)     O(N)
+
+ĐIỂM YẾU (Research Gap):
+- Chưa gắn trực tiếp với event-time và watermark
+- Vẫn nhìn bài toán như cập nhật database, chưa xử lý late arrivals
+
+Ý nghĩa với WAVES:
+→ WAVES kế thừa LT-Tree pattern → Pane-based Forest
+→ Mỗi pane close = bulk load (thay vì incremental insert)
+
+
+================================================================================
+SLIDE 6 — Phân tích Watermark (Base 4)
+================================================================================
+
+Nguồn tham chiếu:
+- Watermarks in Stream Processing Systems (VLDB)
+- The Dataflow Model (Google)
+- ProbSlack (SIGMOD)
+
+WATERMARK LÀ GÌ:
+- Là tín hiệu hệ thống phát về mức độ đầy đủ theo event-time
+- "Khi watermark đã đi qua mốc T → hệ thống tin rằng phần lớn dữ liệu liên quan đã tới"
+- KHÔNG PHẢI chân lý tuyệt đối — là tín hiệu mang tính vận hành
+
+WATERMARK KHÔNG BLOCK LUỒNG CHÍNH:
+- Watermark chỉ advance khi có dữ liệu mới
+- Luồng chính vẫn phát provisional alert ngay khi phát hiện
+- Watermark phụ trách: (1) đóng sổ, (2) dọn rác, (3) chuyển provisional → final
+
+HAI PHA RA QUYẾT ĐỊNH:
+Pha 1 — PROVISIONAL VERDICT:
+  Nếu luật có dấu hiệu vi phạm nhưng còn khả năng do late data
+  → Tạo cảnh báo TẠM THỜI
+
+Pha 2 — FINAL VERDICT:
+  Khi watermark vượt qua mốc liên quan MÀ vi phạm vẫn còn
+  → Xác nhận lỗi CHÍNH THỨC
+
+TRADE-OFF:
+- Watermark bảo thủ → phản ứng chậm
+- Watermark gắt → late data bị xem là lỗi → false alert tăng
+
+Ý nghĩa với WAVES:
+→ Watermark là THÀNH PHẦN TRUNG TÂM, không phải chi tiết triển khai phụ
+
+
+================================================================================
+SLIDE 6b — Các nền tảng Streaming DQ trên thị trường (Industry Landscape)
+================================================================================
+
+TỔNG HỢP TỪ NGHIÊN CỨU THỊ TRƯỜNG (2024-2025):
+
+BẢNG SO SÁNH 12 NỀN TẢNG CHÍNH:
+
+┌──────────────────┬────────────┬───────────┬───────────┬────────────┬────────────┐
+│ Nền tảng         │ DC Check   │ Watermark │ Late Data │ Incremental│ Streaming  │
+├──────────────────┼────────────┼───────────┼───────────┼────────────┼────────────┤
+│ Apache Griffin   │ ❌         │ ❌        │ ❌        │ ⚠️         │ ⚠️ (Kafka) │
+│ Great Expect.   │ ❌         │ ❌        │ ❌        │ ❌         │ ❌         │
+│ Spark Struct.   │ ❌         │ ✅        │ ⚠️        │ ⚠️         │ ✅         │
+│ AWS Deequ       │ ❌         │ ❌        │ ❌        │ ⚠️         │ ❌         │
+│ GCP Dataplex    │ ❌         │ ❌        │ ❌        │ ❌         │ ❌         │
+│ Soda Core       │ ❌         │ ❌        │ ❌        │ ❌         │ ❌         │
+│ dbt + Mater.    │ ⚠️         │ ❌        │ ❌        │ ⚠️         │ ⚠️         │
+│ Monte Carlo     │ ❌         │ ❌        │ ❌        │ ❌         │ ❌         │
+│ Bigeye          │ ❌         │ ❌        │ ❌        │ ❌         │ ❌         │
+│ Acceldata       │ ❌         │ ⚠️        │ ❌        │ ❌         │ ✅         │
+│ Datafold        │ ❌         │ ❌        │ ❌        │ ❌         │ ❌         │
+│ Talend          │ ❌         │ ❌        │ ❌        │ ⚠️         │ ⚠️         │
+├──────────────────┼────────────┼───────────┼───────────┼────────────┼────────────┤
+│ Stream DaQ      │ ✅         │ ✅        │ ✅        │ ✅         │ ✅         │
+│ Rapidash        │ ✅         │ ⚠️        │ ⚠️        │ ✅         │ ✅         │
+│ WAVES (đề xuất)│ ✅         │ ✅        │ ✅        │ ✅         │ ✅         │
+└──────────────────┴────────────┴───────────┴───────────┴────────────┴────────────┘
+✅ = Có hỗ trợ  |  ⚠️ = Hỗ trợ hạn chế  |  ❌ = Không hỗ trợ
+
+CHI TIẾT TỪNG NỀN TẢNG:
+
+1. APACHE GRIFFIN (Archived 2018)
+   GitHub: https://github.com/apache/griffin
+   Điểm mạnh: 30+ built-in checks, Kafka integration
+   Điểm yếu: Không DC, không watermark, archived project
+
+2. GREAT EXPECTATIONS (Python, Open Source)
+   GitHub: https://github.com/great-expectations/great_expectations
+   Điểm mạnh: Expectation DSL, interactive, data docs
+   Điểm yếu: Chính thức "không hỗ trợ streaming" (Issue #7337)
+
+3. SODA CORE (Python, Open Source)
+   GitHub: https://github.com/sodadata/soda-core
+   Điểm mạnh: 25+ metrics, YAML-based checks, 18+ data sources
+   Điểm yếu: Batch-only, không streaming support, không DC
+
+4. SPARK STRUCTURED STREAMING (Databricks)
+   Điểm mạnh: Có watermark, allowed lateness, native streaming
+   Điểm yếu: Không DC checking, chỉ cơ bản metrics
+
+5. AWS DEEQU + SAGEMAKER MODEL MONITOR (Amazon)
+   Docs: https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html
+   Điểm mạnh: Drift detection, baseline comparison
+   Điểm yếu: Batch-only, không streaming, không DC, không watermark
+
+6. GCP DATAPLEX DATA QUALITY (Google Cloud)
+   Docs: https://cloud.google.com/dataplex/docs/auto-data-quality-overview
+   Điểm mạnh: Auto scans, 5 quality dimensions, custom SQL rules
+   Điểm yếu: BigQuery table scans, không streaming, không DC
+
+7. MONTE CARLO / BIGEYE / ACCELDATA (Commercial Observability)
+   Điểm mạnh: Auto anomaly detection, lineage tracking
+   Điểm yếu: Table-level monitoring, không DC, không watermark
+
+KẾT LUẬN THỊ TRƯỜNG:
+❌ TẤT CẢ 12 NỀN TẢNG đều THIẾU Denial Constraints checking
+❌ TẤT CẢ trừ Spark Structured Streaming đều THIẾU watermark semantics
+❌ KHÔNG CÓ nền tảng nào có đầy đủ: Stream-first + DC + Watermark + Retraction
+
+→ WAVES là KHUNG ĐẦU TIÊN tích hợp đủ 4 thành phần
+
+Nguồn research:
+- Icewafl (EDBT 2025): Data stream pollution benchmark
+- Stream DaQ (arXiv:2506.06147, 2025)
+- Rapidash (arXiv:2309.12436, VLDB 2024)
+- Deequ (VLDB 2018): Metrics-based DQ verification
+
+
+================================================================================
+SLIDE 6c — Research Gaps: Chi tiết từng lỗ hổng
+================================================================================
+
+GAP 1: DENIAL CONSTRAINTS TRONG STREAMING DQ
+───────────────────────────────────────────────
+
+NGHIÊN CỨU CƠ SỞ:
+- VLDB 2025 paper: "đến 95% constraints được tự động suy luận là FALSE constraints"
+  Source: https://www.vldb.org/pvldb/vol18/p3477-martin.pdf
+- Incremental DC Discovery (Springer 2024): "phương pháp tăng dần nhanh hơn
+  batch discovery nhiều bậc độ lớn"
+  Source: https://link.springer.com/article/10.1007/s00778-023-00788-y
+- Stream DaQ (2025): đề xuất kiểm tra DC ngay trong pipeline
+
+VẤN ĐỀ VỚI DENIAL CONSTRAINTS TRONG STREAMING:
+1. Tính đúng đắn: Cần event-time semantics để phân biệt violation thật vs. late data
+2. Hiệu suất: O(N²) brute-force không scale khi tăng window size
+3. State management: Cần incremental updates khi window slide
+4. Ghost/retraction: Late data có thể invalidate violation đã báo
+
+GIẢI PHÁP CỦA WAVES:
+- Rapidash-style orthogonal range search: O(N log^k N) thay vì O(N²)
+- Pane-based forest: incremental state management
+- Watermark-aware decision: provisional → final → retract
+- EMA + Elastic Box: thích nghi với concept drift
+
+GAP 2: WATERMARK + LATE DATA TRONG THỰC TẾ
+───────────────────────────────────────────────
+
+NGHIÊN CỨU CƠ SỞ:
+- The Dataflow Model (Google, VLDB 2015): watermark là tín hiệu event-time
+  Source: https://vldb.org/pvldb/vol8/p1792-Akidau.pdf
+- Klink (SIGMOD 2021): "progress-aware scheduling" giảm 60% latency
+  Source: https://doi.org/10.1145/3448016.3452794
+- ProbSlack: watermark dựa trên probabilistic bounds
+
+WATERMARK LAG - VẤN ĐỀ THỰC TẾ:
+Khi watermark behind processing time:
+- Processing time: 10:00:30
+- Event-time watermark: 10:00:15  (lag = 15s)
+→ Window không đóng được
+→ State tiếp tục tăng
+→ Detection latency tăng
+
+ROOT CAUSES (Klink SIGMOD 2021):
+1. Stragglers: partition chậm giữ watermark toàn cục
+2. Network delays: latency biến thiên
+3. Idle sources: partition dừng produce
+
+WAVES GIẢI QUYẾT:
+- Watermark per pane (không phải per window toàn cục)
+- Grace period per rule (configurable wait_for_late)
+- TombstoneManager: O(1) drop pane khi expire
+
+GAP 3: BOX DROPPING HIỆU QUẢ TRONG ĐA CHIỀU
+───────────────────────────────────────────────
+
+NGHIÊN CỨU CƠ SỞ:
+- Rapidash (VLDB 2024): hash partition + orthogonal range search
+  Source: https://arxiv.org/abs/2309.12436
+- Bentley & Friedman (1979): data structures for range searching
+
+VẤN ĐỀ "DIMENSIONALITY CURSE":
+- Khi số chiều k tăng → hypercube volume tăng theo k
+- Hầu hết bounding boxes giao với query region → ít prune được
+- KD-Tree query trở nên ~O(n) trong không gian cao chiều
+
+Rapidash GIẢI PHÁP:
+1. Hash partition theo equality columns → giảm chiều cần search
+2. Chỉ range search trên k' < k chiều (k_max cap)
+3. Boolean range search thay vì list all matches
+
+WAVES GIẢI PHÁP:
+- Shared Rule Optimizer: group DCs có equality cols chung
+- k_max = 5 (configurable) cho range search dimensions
+- Padding strategy cho boundary boxes
+
+
+================================================================================
+SLIDE 7 — Khoảng trống nghiên cứu (Research Gaps)
+================================================================================
+
+Tổng hợp từ 4 nhóm tài liệu, khoảng trống rõ ràng:
+
+HIỆN CHƯA CÓ KHUNG NÀO ĐỒNG THỜI LÀM TỐT 3 VIỆC:
+
+1. Stream-first + Quality Observability
+   Stream DaQ làm được, nhưng thiếu DC checking
+
+2. Xử lý Denial Constraints đủ hiệu quả để chạy in-pipeline
+   Rapidash + Weever làm được, nhưng là batch/static
+
+3. Ra quyết định cảnh báo theo hướng delay-aware
+   Watermark papers lý thuyết tốt, nhưng chưa tích hợp với DC
+
+PAIN POINTS CỤ THỂ:
+
+Pain Point 1 — Chi phí tính toán:
+- Kiểm tra đơn giản (null, range) xử lý tốt trên từng bản ghi
+- Nhưng DC yêu cầu so sánh giữa nhiều dòng → O(N²) brute-force
+- Khi dữ liệu tăng → bottleneck CPU và bộ nhớ
+
+Pain Point 2 — Chất lượng cảnh báo:
+- Thiếu dữ liệu tạm thời ≠ vi phạm logic thật
+- Late data, out-of-order arrivals rất phổ biến trong thực tế
+- Nếu thiếu watermark-aware → false alert cao → alert fatigue
+
+Pain Point 3 — Cây phình to (Tree Fragmentation):
+- Một KD-Tree cho toàn bộ window → khi dữ liệu tăng → tree mất cân bằng
+- Insert/delete từng điểm → rebalancing liên tục → spike latency
+- Query performance không ổn định
+
+
+================================================================================
+SLIDE 8 — Mục tiêu đề tài & Research Questions
+================================================================================
+
+MỤC TIÊU 1: Xử lý DC trực tiếp trên luồng
+          với chi phí thấp hơn O(N²) brute-force
+
+MỤC TIÊU 2: Giảm false alerts bằng cơ chế phán quyết hai pha
+          dựa trên watermark và event-time
+
+MỤC TIÊU 3: Xuất quality meta-stream phục vụ
+          quan sát liên tục cho pipeline và hạ nguồn
+
+----------------------------------------------------------------------
+RESEARCH QUESTIONS
+----------------------------------------------------------------------
+
+RQ1: Throughput vượt nested-loop truyền thống?
+  → Giả thuyết: KD-Tree + pane-based forest cắt tỉa không gian
+  → Metrics: Throughput, P99 latency, detection latency
+  → Modules: Rapidash, Weever, Ingestion, Window
+
+RQ2: EMA + Tombstone/Retraction giữ F1 khi drift + late data?
+  → Giả thuyết: Elastic box tự thu hẹp/mở rộng theo context;
+                provisional vs final; retraction sửa false alert
+  → Metrics: Precision, Recall, F1 (sau retraction)
+  → Modules: Logical Engine, Elastic Box, Decision, Tombstone
+
+RQ3: Mở rộng khi 50–100 luật DC?
+  → Giả thuyết: Shared indexing + batched multi-rule traversal
+  → Metrics: Memory footprint, throughput
+  → Modules: Shared Rule Optimizer, Rapidash batched
+
+RQ4: Trade-off siêu tham số?
+  → Giả thuyết: α EMA, pane size, dimension cap ảnh hưởng khác nhau
+  → Metrics: P99 / avg latency, F1, RAM
+  → Modules: Elastic Box, Weever, Shared Rule Optimizer
+
+
+================================================================================
+SLIDE 9 — Kiến trúc đề xuất WAVES (Tổng quan)
+================================================================================
+
+Kiến trúc: Stream-first với chiến lược trạng thái lai
+
+┌──────────────────────────────────────────────────────────────┐
+│                    StreamIngestion                           │
+│         CSV / JSON / Kafka → DataEvent                       │
+│         Gán EventTime + IngestionTime                        │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+┌────────────────────▼─────────────────────────────────────────┐
+│                  WindowManager                               │
+│         Sliding Window + Pane gán                           │
+│         Window Buffer O(1) lookup                           │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+        ┌────────────┴────────────┐
+        │                         │
+┌───────▼───────┐      ┌─────────▼─────────┐
+│  BasicDQ      │      │  Logical Engine    │
+│  Checks       │      │  Statistical       │
+│  (inline)     │      │  Context (EMA)     │
+└───────┬───────┘      │  Elastic Box Gen   │
+        │              └─────────┬─────────┘
+        │                        │
+┌───────▼────────────────────────▼─────────────────────────────┐
+│                     Rapidash                                 │
+│         Batched KD-Tree Traversal                            │
+│         Box Dropping + Candidate Violations                  │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────────────────┐
+│                  Decision Layer                               │
+│         Provisional / Final / Retraction                     │
+│         AlertStateStore + TombstoneFilter                   │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────────────────┐
+│           Watermark + AlertOutput                           │
+│         WatermarkClock + MetaStream                         │
+│                                                              │
+│         ┌─────────────────────────────────────┐             │
+│         │           Weever (Pane Forest)      │             │
+│         │  Pane close → Bulk Load KD-Tree     │             │
+│         │  O(1) DROP pane khi expire           │             │
+│         └─────────────────────────────────────┘             │
+└──────────────────────────────────────────────────────────────┘
+
+SỰ PHỤ THUỘC QUAN TRỌNG:
+- Rapidash đọc snapshot forest từ Weever (stateless về index)
+- Decision nhận candidate từ Rapidash + watermark → cập nhật Weever
+- WindowManager cung cấp ranh giới cho watermark seal
+- TombstoneManager được khởi tạo tại pipeline level
+
+
+================================================================================
+SLIDE 10 — Kiến trúc chi tiết: Các Module
+================================================================================
+
+MODULE         MÔ TẢ
+
+2.1 Ingestion  Nhận luồng CSV/JSON/Kafka
+               Gán EventTime / IngestionTime
+               Chuẩn hóa schema → DataEvent
+               DLQ cho malformed events
+
+2.2 Window     Gán bản ghi vào sliding window (tumbling/sliding)
+               Tính delta insert/delete khi slide
+               Gán pane_id vào event
+
+2.3 BasicDQ    Completeness, validity, range checks
+               Inline trên luồng chính, O(1) per event
+               Output: QualityMetaStream
+
+2.4 Logical    Statistical Context (EMA) — cập nhật liên tục
+Engine         Elastic Box Generator — padding tự động
+               Coordinator — thứ tự update → sinh box
+
+2.5 Optimizer  DC Parser — parse JSON → Predicate list
+               Greedy Grouping — ghép luật có equality cols chung
+               Infinite Padding — (-∞,+∞) cho chiều không dùng
+
+2.6 Rapidash   KD-Tree Bulk Load per pane (khi pane close)
+               Batched Traversal — duyệt nhiều box cùng lúc
+               Box Dropping — prune nhánh không giao box
+
+2.7 Weever     Pane Forest — flat list + O(1) lookup
+               DROP pane khi expire = O(1)
+               TombstoneManager drop cùng lúc
+
+2.8 Decision   AlertStateStore — key = alert_id
+               Provisional / Final / Retraction alerts
+               TombstoneManager add khi retract
+
+2.9 Tombstone  O(1) lookup filter per pane
+               gắn vòng đời với pane_id
+               drop_pane = O(1) clear
+
+2.10 Late      Kiểm tra ngưỡng lateness
+Handler        Retract alerts liên quan
+               Re-check với pane đã close
+               Late event upsert vào store
+
+2.11 Output    AlertSink — provisional/final/retraction
+               MetaSink — quality meta-stream
+               Detection latency = event_time → output_time
+
+2.11b Store   SHARED: event_id → (DataEvent, pane_id, window_id)
+               Một instance cho toàn pipeline
+
+
+================================================================================
+SLIDE 11 — Phân tích KD-Tree (Rapidash Layer)
+================================================================================
+
+VẤN ĐỀ GỐC: O(N²) Brute-Force
+- So sánh mọi cặp bản ghi trong window
+- Window 10 phút × 10K events → ~50M so sánh
+- Không scale khi tăng số luật hoặc kích thước window
+
+GIẢI PHÁP: Orthogonal Range Search
+- Mỗi tuple = 1 điểm trong không gian k-chiều
+- DC = vùng truy vấn (hypercube) trong không gian đó
+- Tìm tất cả điểm nằm trong vùng → dùng KD-Tree
+
+KD-TREE BULK LOAD (khi pane close):
+- Sắp xếp points theo chiều có range lớn nhất (argmax_range)
+- Tách điểm tại median → left/right subtree
+- Mỗi node lưu: bounding box (left_lo, left_hi, right_lo, right_hi)
+  → DÙNG CHO BOX DROPPING
+
+BATCHED TRAVERSAL + BOX DROPPING:
+- Duyệt tree với query_point (điểm s)
+- Tại mỗi node: kiểm tra box có giao với region không
+  → Nếu KHÔNG giao → PRUNE toàn nhánh (không duyệt)
+  → Nếu CÓ giao → duyệt tiếp
+- Nếu query_point nằm trong box → candidate violation
+- Kết quả: CandidateViolation chứa TẤT CẢ matched_ids
+
+ALGORITHM Intersects(box, region_lo, region_hi):
+  for dim in range(len(region_lo)):
+      box_lo, box_hi = box.padded_bounds.get(dim, (-∞, +∞))
+      overlap_lo = max(region_lo[dim], box_lo)
+      overlap_hi = min(region_hi[dim], box_hi)
+      if overlap_lo > overlap_hi: return False  # Prune!
+  return True  # Cần duyệt
+
+RAPIDASH GỐC vs WAVES:
+- Rapidash: Hash partition → 1 tree per partition
+- WAVES: Pane-based forest → 1 tree per pane
+  → Tại sao? Streaming: window slide = pane close/open liên tục
+
+
+================================================================================
+SLIDE 11b — Chi tiết Box Dropping & Bounding Box Intersection
+================================================================================
+
+ALGORITHM: BBOX INTERSECTION (WAVES Implementation)
+
+Pseudocode cho Intersects(box, region_lo, region_hi):
+
+Intersects(box, region_lo, region_hi):
+  for dim in range(len(region_lo)):
+      box_lo, box_hi = box.padded_bounds.get(dim, (-∞, +∞))
+      overlap_lo = max(region_lo[dim], box_lo)
+      overlap_hi = min(region_hi[dim], box_hi)
+      if overlap_lo > overlap_hi: return False  # PRUNE!
+  return True  # Cần duyệt
+
+GIẢI THÍCH TỪNG BƯỚC:
+1. Với mỗi chiều, tính overlap giữa box và region
+2. Nếu overlap trống (lo > hi) → box không giao region → PRUNE nhánh
+3. Nếu tất cả chiều đều giao → box có thể chứa điểm trong region → duyệt tiếp
+
+VÍ DỤ CỤ THỂ (DC1: Fare-Distance Dominance):
+Query point: (distance=1.8, fare=12.0)
+DC box: lo=(0, 0), hi=(2.0, 8.0)
+
+Dim 0 (distance): overlap = max(1.8, 0) to min(1.8, 2.0) = 1.8 to 1.8 ✅
+Dim 1 (fare):     overlap = max(12.0, 0) to min(12.0, 8.0) = 8.0 to 8.0 ❌
+                 → lo(8.0) > hi(8.0) → PRUNE! (fare=12 > 8.0, không thuộc box)
+
+KHI NÀO BOX DROPPING THẤT BẠI (WORST CASE):
+
+1. HIGH-DIMENSIONALITY (k > 10):
+   - Hypercube volume tăng nhanh theo k
+   - Hầu hết boxes giao với query region
+   - Hiệu quả prune giảm đáng kể
+
+2. UNIFORM DATA DISTRIBUTION:
+   - Tree depth ~ log n
+   - Internal node bounding boxes cover large ranges
+   - Leaf nodes cover very small ranges
+
+3. QUERY REGION COVERS MOST OF SPACE:
+   - Khi query box lớn (ví dụ: fare > 0 vs fare > 5)
+   - Large query = nhiều boxes giao = ít prune
+
+4. MINIMAL PADDING:
+   - Không có padding → boundary cases miss matches
+   - Too much padding → tăng false intersections
+
+RAPIDASH SOLUTION - BOOLEAN RANGE SEARCH:
+
+Thay vì list all matches, Rapidash dùng boolean check:
+BooleanRangeSearch(R, DC) → True/False
+
+Hai searches cho mỗi DC:
+1. Search range [L, U]: kiểm tra ∃ tuple trong box
+2. Search inverted range [L', U']: kiểm tra ∃ tuple vi phạm
+
+Nguồn: Rapidash arXiv:2309.12436 (VLDB 2024)
+
+
+================================================================================
+SLIDE 12 — Giải quyết vấn đề cây phình to (Rapidash)
+================================================================================
+
+VẤN ĐỀ CÂY PHÌNH TO LÀ GÌ:
+
+Khi dùng một KD-Tree cho toàn bộ window:
+- Tree lớn dần theo số events trong window
+- Cửa sổ 1 giờ → hàng trăm ngàn points
+- Câu hỏi: Nếu cứ để chờ → bottleneck lớn không?
+
+ẢNH HƯỞNG CỦA CÂY PHÌNH TO:
+
+1. Bottleneck về tốc độ cả flow:
+   - Query mới phải duyệt tree lớn → tăng P99 latency
+   - Nhiều points trong box → nhiều candidate → tăng thời gian xử lý
+   - Memory tăng theo O(N log N) cho KD-Tree
+
+2. Ảnh hưởng tốc độ gửi alert:
+   - Nếu tree quá lớn → detection latency tăng
+   - Alert không kịp gửi trước khi watermark advance
+   - Detection latency = event_time → output_time tăng
+
+3. Box Dropping bị giảm hiệu quả:
+   - Nếu box quá lớn → giao với hầu hết regions → ít prune được
+   - Kết quả: gần như quét toàn bộ tree
+
+GIẢI PHÁP CỦA WAVES — PANE-BASED FOREST:
+
+Thay vì 1 tree lớn → Nhiều tree nhỏ (mỗi pane = 1 tree)
+
+Khi pane close (ví dụ: sau 1 phút):
+- Bulk load tất cả events trong pane → KD-Tree mới
+- Tree kích thước nhỏ → query nhanh
+- Pane mới: tree rỗng, grow dần
+
+Khi pane expire (watermark advance):
+- DROP toàn bộ tree = O(1) (không rebalance)
+- TombstoneManager drop cùng lúc
+
+KẾT QUẢ:
+- Tree size bị cap bởi pane_size, không phải window_size
+- Pane 1 phút × 10K events/giờ → ~170 events/pane → tree nhỏ
+- O(1) DROP pane = không memory leak
+- Batched traversal vẫn hoạt động vì forest cung cấp tất cả roots
+
+
+================================================================================
+SLIDE 13 — Phân tích Incremental (Weever Layer)
+================================================================================
+
+VẤN ĐỀ VỚI PURE BULK LOAD:
+
+Bulk load khi pane close = GOOD cho pane mới
+Nhưng: Cần duy trì state khi window SLIDE liên tục
+
+Rapidash gốc: Mỗi window = rebuild tree từ đầu
+→ Lãng phí: 90% data cũ vẫn hợp lệ
+
+Weever gốc: LT-Tree với incremental insert/delete
+→ Tốt, nhưng phức tạp và chưa tích hợp watermark
+
+WAVES ADAPTATION: PANE-BASED FOREST
+
+THIẾT KẾ:
+PaneForest = flat list[Pane] + panes_by_id: Dict[pane_id → Pane]
+
+Mỗi Pane có:
+  pane_id, start_time, end_time, window_id
+  kdtree: KDTreeNode (build khi close)
+  is_active: bool (True = đang thu thập events)
+  buffer: List[(point, event_id)]
+
+LIFECYCLE CỦA PANE:
+
+1. Pane mới được tạo:
+   - is_active = True
+   - Events được thu thập vào buffer
+   - Chưa có KD-Tree
+
+2. Watermark advance đến pane_end:
+   - pane_close(): bulk_load(buffer) → kdtree
+   - is_active = False
+   - pane trở thành "closed" (read-only)
+
+3. Watermark advance đến window boundary:
+   - DROP pane: O(1) — xóa khỏi list và dict
+   - TombstoneManager drop cùng lúc
+
+O(1) DROP PANE — KỸ THUẬT:
+  self.panes = [p for p in self.panes if p.pane_id != pane_id]
+  self.panes_by_id.pop(pane_id, None)
+  if self.tombstone_mgr:
+      self.tombstone_mgr.drop_pane(pane_id)
+
+SO SÁNH CÁC TIẾP CẬN:
+                    Weever gốc         WAVES
+Insert/Delete       O(log N)           Buffer → bulk load
+Delete pane         Không có           O(1) DROP
+Rebuild tree        Có (LT-Tree)      Không (pane close)
+Watermark-aware     Không              Có
+
+TẠI SAO KHÔNG DÙNG LT-TREE?
+- LT-Tree tốt cho incremental insert/delete từng điểm
+- WAVES pane close = bulk load 100-200 điểm cùng lúc → nhanh hơn
+- LT-Tree cần complex rebalancing khi delete → pane DROP đơn giản hơn
+
+
+================================================================================
+SLIDE 14 — Giải quyết vấn đề cây phình to (Weever)
+================================================================================
+
+VẤN ĐỀ CÂY PHÌNH TO TRONG CONTEXT INCREMENTTAL:
+
+Câu hỏi gốc: "Nếu cứ để chờ thì bottleneck lớn không?"
+
+SCENARIO KHÔNG CÓ PANE:
+- Window 10 phút: 1 tree với 10K points
+- Mỗi window slide: xóa ~1K points, thêm ~1K points
+- Nếu xóa từng điểm: O(log N) × 1K = 1000 × log(10000) ≈ 10000 operations
+- Kèm rebalancing: unpredictable latency spikes
+
+SCENARIO CÓ PANE (WAVES):
+- Window 10 phút × pane 1 phút = 10 panes
+- Mỗi pane: ~1K points → tree rất nhỏ
+- Window slide: xóa CẢ PANE (1K points) = O(1)
+- Không rebalancing per point
+
+VẤN ĐỀ PHÁT SINH: Khi nào pane close?
+
+2 CHIẾN LƯỢC WATERMARK CHO PANE:
+
+Strategy A — Watermark trigger pane close:
+  pane close khi watermark_clock >= pane_end
+  → Đảm bảo late data trong pane đã đến
+  → Nhược: watermark chậm → pane close chậm
+
+Strategy B — Pane close ngay khi hết pane duration:
+  pane close khi processing_time đến pane_end
+  → Late data trong pane có thể chưa đến
+  → Xử lý bằng LateHandler
+
+WAVES CHỌN: Strategy A (Watermark trigger)
+→ Đảm bảo pane đầy đủ trước khi bulk load
+→ Late data được xử lý qua LateHandler riêng
+
+TRADE-OFF ĐƯỢC CHẤP NHẬN:
+- Pane close có thể chậm nếu watermark lag
+- Nhưng detection latency vẫn OK vì detection chỉ trên pane đã close
+- Late data được handle bằng re-check mechanism
+
+
+================================================================================
+SLIDE 15 — Phân tích Watermark và xử lý data lỗi
+================================================================================
+
+WATERMARK TRONG WAVES:
+
+Watermark không phải barrier chặn luồng
+→ Nó là tín hiệu: "đã đến mốc T, hầu hết data cho T đã tới"
+
+Trong WAVES, watermark phụ trách 3 việc:
+
+1. Pane close trigger:
+   - Khi watermark >= pane_end → pane close
+   - Bulk load buffer → KD-Tree
+
+2. Window slide:
+   - Tính delta_insert / delta_delete khi slide
+   - Thông báo Decision finalize alerts
+
+3. Provisional → Final:
+   - Khi watermark vượt mốc window_end + wait_for_late
+   - Chuyển alerts từ PROVISIONAL sang FINAL
+   - Gửi final alerts ra output
+
+CONFIG:
+  wait_for_late_seconds: 300   # 5 phút sau window close
+  watermark_advance_interval: 1 # Kiểm tra mỗi giây
+  alert_ttl_seconds: 3600      # Xóa alert sau 1 giờ
+
+----------------------------------------------------------------------
+XỬ LÝ DATA LỖI — 4 LOẠI TRONG WAVES
+----------------------------------------------------------------------
+
+TYPE 1: Malformed Event (parse lỗi)
+→ Emit đến DLQ (Dead Letter Queue)
+→ Không block pipeline
+
+TYPE 2: Out-of-Order Event (đến đúng thời gian, sai thứ tự)
+→ Vẫn route đến đúng window dựa trên event_time
+→ Xử lý bình thường, không cần special handling
+
+TYPE 3: Late Event (đến sau khi pane/window đã close)
+→ Kiểm tra ngưỡng: watermark > window_end + wait_for_late?
+    → YES: DROP event, log
+    → NO: LateHandler xử lý
+→ LateHandler:
+    1. Tìm alerts liên quan đến event (AlertStateStore.get_by_event_id)
+    2. Kiểm tra late_event có invalidate alert không
+    3. Retract alert nếu invalid
+    4. Re-check: late event có tạo violation mới không?
+    5. Insert vào pane đã close (re-check KD-Tree traversal)
+
+TYPE 4: Ghost / Retracted Event (đã retract)
+→ TombstoneFilter: O(1) lookup tại lá KD-Tree
+→ Bỏ qua trong traversal
+
+----------------------------------------------------------------------
+RETraction MECHANISM
+----------------------------------------------------------------------
+
+Khi late event đến và invalidate alert cũ:
+1. Retract alert: xóa khỏi AlertStateStore
+2. Tombstone: thêm TẤT CẢ event_ids (query + matched) vào TombstoneFilter
+3. Log retraction event vào metrics
+4. Late event re-check: tạo candidate mới nếu cần
+
+Quan trọng: Retraction chỉ xóa PROVISIONAL alerts
+→ FINAL alerts không retract được (đã confirm)
+
+
+================================================================================
+SLIDE 15b — Chi tiết Ghost/Retraction & Sink-Side Constraints
+================================================================================
+
+WHAT HAPPENS WHEN LATE EVENT RETRACTS VIOLATION:
+────────────────────────────────────────────────
+
+Timeline example:
+10:00:00 - Event A arrives, violates DC → Alert #123 PROVISIONAL emitted
+10:00:05 - Event B (late, timestamp 09:59:58) arrives
+           → Retracts Event A's violation
+           → Alert #123 becomes RETRACTED
+
+PROBLEM: Sink already acted on Alert #123
+         (notified ops team, triggered workflow, etc.)
+
+SINK-SIDE CONSTRAINTS: CÁC MÔ HÌNH ALERT
+───────────────────────────────────────────
+
+┌─────────────┬─────────────────────────────────────┬──────────────────────┐
+│ Model       │ Sink Behavior                       │ Trade-off            │
+├─────────────┼─────────────────────────────────────┼──────────────────────┤
+│ Idempotent  │ Same alert twice = no change       │ Simple dashboards    │
+│ Retractable │ Can undo/override previous alert    │ Complex workflows    │
+│ Append-only │ Alerts never retract, new alerts   │ Audit trail only    │
+│ Versioned   │ Each update has version number     │ Full history        │
+└─────────────┴─────────────────────────────────────┴──────────────────────┘
+
+WAVES CHỌN: Idempotent + Versioned hybrid
+→ Final alerts là idempotent (không retract)
+→ Provisional alerts có thể retract trước khi finalize
+
+OUT-OF-ORDER RETRACTION PROBLEM:
+────────────────────────────────────────────────
+
+Order received by sink: [ALERT, ALERT, RETRACT]  (wrong order)
+Expected order:         [RETRACT, ALERT, ALERT]
+
+→ Sink processes ALERT, takes action
+→ Later RETRACT arrives, but action already taken
+
+WAVES SOLUTION - Alert State Machine:
+────────────────────────────────────────────────
+
+Alert State Machine:
+  PROVISIONAL ──┬── (WM passes, no retraction) ──→ FINAL
+                │
+                └── (retraction arrives) ──────────→ RETRACTED
+
+Idempotency Check:
+  on_alert(alert_id):
+    if state[alert_id] == RETRACTED:
+      return "re-detection, emit with note"
+    if state[alert_id] in (PROVISIONAL, FINAL):
+      return "deduplicate"
+    return "emit new"
+
+SINK REQUIREMENTS:
+1. ALERT ID SCHEMA có window context:
+   alert_id = "{rule_id}:{entity_key}:{window_id}:{seq_num}"
+2. SUPPORT idempotent alerts
+3. HANDLE versioned updates
+4. CACHING/DEDUP window for provisional alerts
+
+WHAT IF SINK ALREADY ACTED BEFORE RETRACT:
+────────────────────────────────────────────────
+
+Có 3 chiến lược:
+
+Strategy 1 — ACKNOWLEDGMENT + ROLLBACK:
+- Sink ack alert before acting
+- On RETRACT: send compensation/rollback signal
+- Complex, requires sink to support rollback
+
+Strategy 2 — PROVISIONAL ONLY (WAVES Default):
+- Only send FINAL alerts to sink
+- Provisional alerts are "soft" notifications
+- Sink never acts on PROVISIONAL → no rollback needed
+
+Strategy 3 — COMPENSATING ACTION:
+- On RETRACT: send compensating action (e.g., "CANCEL_NOTIFICATION")
+- Sink must support idempotent compensating actions
+
+WAVES CHỌN: Strategy 2 (PROVISIONAL ONLY)
+→ Chỉ FINAL alerts trigger sink actions
+→ PROVISIONAL alerts là "early warning" cho ops
+→ Không có rollback scenario vì sink không act trên PROVISIONAL
+
+Nghiên cứu tham khảo:
+- Event Sourcing: immutable event log
+- Saga Pattern: compensating transactions
+- CRDT OR-Set: observed-remove set for retractable items
+
+
+================================================================================
+SLIDE 16 — Các vấn đề phát sinh và cách giải quyết
+================================================================================
+
+VẤN ĐỀ 1: CÂY PHÌNH TO → BOTTLENECK LỚN KHÔNG?
+
+→ Câu trả lời WAVES: KHÔNG, nhờ Pane-Based Forest
+
+Giải thích:
+- Mỗi pane chỉ chứa events trong khoảng pane_size (ví dụ: 1 phút)
+- Tree size bị cap bởi pane_size, không phải window_size
+- Pane 1 phút × 10K events/giờ → ~170 events/pane → tree rất nhỏ
+- O(1) DROP pane khi expire → không memory leak
+
+Metric kỳ vọng: P99 latency ổn định không spike khi window size tăng
+
+----------------------------------------------------------------------
+
+VẤN ĐỀ 2: ẢNH HƯỞNG TỐC ĐỘ CẢ FLOW
+
+→ Câu trả lời: Rapidash Batch Traversal + Box Dropping
+
+Giải thích:
+- Nhiều DC rules → được GROUP theo equality columns
+- Một traversal duyệt tất cả boxes trong group
+- Box Dropping: prune nhánh không giao → giảm visited nodes
+- ActiveBox metadata loại bỏ parsing DC trên hot path
+
+Metric kỳ vọng: Throughput > NL-Stream baseline
+
+----------------------------------------------------------------------
+
+VẤN ĐỀ 3: ẢNH HƯỞNG TỐC ĐỘ GỬI ALERT
+
+→ Câu trả lời: Provisional Alert → Final Alert + Retraction
+
+Giải thích:
+- Alert được phát ngay khi phát hiện violation (PROVISIONAL)
+- Watermark advance → finalize (chờ 5 phút cho late data)
+- Nếu late data retract → alert bị xóa trước khi finalize
+- Chỉ FINAL alerts được gửi ra AlertOutput
+
+Metric kỳ vọng: False positive reduction rate cao khi bật delay-aware
+
+----------------------------------------------------------------------
+
+VẤN ĐỀ 4: DÙNG NHỮNG DC GÌ?
+
+→ 3 DC benchmark trong WAVES:
+
+DC1 — Fare–Distance Dominance:
+  NOT (trip_distance_s == trip_distance_t
+       AND fare_amount_s <= fare_amount_t
+       AND trip_distance_s < trip_distance_t)
+  → Ý nghĩa: Hai xe cùng quãng đường, xe ngắn không fare cao bất thường
+  → Domain: Rapidash / KD-Tree (range search trên fare)
+
+DC2 — Context-Aware Duration Anomaly:
+  NOT (PULocationID_s == PULocationID_t
+       AND DOLocationID_s == DOLocationID_t
+       AND trip_duration_s <= trip_duration_t)
+  → Ý nghĩa: Cùng tuyến, duration chênh ngoài biên độ EMA
+  → Domain: Logical Engine / Elastic Box (EMA padding)
+
+DC3 — Toll Route Anomaly:
+  NOT (PULocationID_s == PULocationID_t
+       AND DOLocationID_s == DOLocationID_t
+       AND tolls_amount_s <= tolls_amount_t)
+  → Ý nghĩa: Cùng tuyến, tolls chênh bất thường
+  → Domain: Shared Optimizer (route cùng → group được)
+
+
+================================================================================
+SLIDE 17 — Đánh giá Benchmark: Metrics
+================================================================================
+
+HAI NHÓM METRICS CẦN ĐO:
+
+NHÓM 1: HIỆU NĂNG HỆ THỐNG (System Performance)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Throughput        │ Số bản ghi xử lý được mỗi giây               │
+│ P99 Latency       │ Latency ở percentile 99                       │
+│ Avg Latency       │ Latency trung bình                             │
+│ Memory Footprint  │ RAM khi chạy dài / khi tăng số luật           │
+│ Detection Latency │ event_time → output_time của final alert        │
+└─────────────────────────────────────────────────────────────────────┘
+
+NHÓM 2: CHẤT LƯỢNG CẢNH BÁO (Accuracy Metrics)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Precision         │ TP / (TP + FP) — sau retraction                │
+│ Recall            │ TP / (TP + FN)                                 │
+│ F1 Score          │ 2 × Precision × Recall / (Precision + Recall)   │
+│ False Positive    │ Số alert sai trên tổng alerts                  │
+│   Reduction Rate  │ FP_with_delay_aware vs FP_without               │
+└─────────────────────────────────────────────────────────────────────┘
+
+Sensitivity Analysis (E1–E3):
+- E1 — Pane size: ảnh hưởng lên P99, avg latency
+- E2 — α (EMA): ảnh hưởng lên Precision, Recall, F1 (với drift data)
+- E3 — Dimension cap (k_max): ảnh hưởng lên RAM, throughput
+
+
+================================================================================
+SLIDE 17b — Benchmark chi tiết: Metrics & Baselines
+================================================================================
+
+METRICS ĐỊNH NGHĨA CHI TIẾT:
+
+NHÓM 1: HIỆU NĂNG HỆ THỐNG
+
+Throughput:
+  Definition: Số bản ghi xử lý được mỗi giây (events/second)
+  Measurement: Đếm events trong sliding window, chia thời gian
+
+P99 Latency:
+  Definition: Latency ở percentile 99 (99% requests < P99)
+  Measurement: Sort all latencies, take 99th percentile
+
+Detection Latency (đặc biệt quan trọng):
+  Definition: Thời gian từ khi violation xảy ra đến khi alert được emit
+  Formula: alert_time - violation_event_time
+
+Memory Footprint:
+  Definition: RAM khi chạy dài, phân biệt:
+    - Active memory: pane đang hoạt động
+    - Cached memory: pane đã close nhưng chưa drop
+    - Tombstone memory: retracted event IDs
+
+NHÓM 2: CHẤT LƯỢNG CẢNH BÁO
+
+Precision = TP / (TP + FP):
+  TP: vi phạm đúng + ground truth có vi phạm
+  FP: báo vi phạm + ground truth không có vi phạm
+
+Recall = TP / (TP + FN):
+  FN: không báo + ground truth có vi phạm
+
+False Positive Reduction Rate:
+  Formula: (FP_without_delay_aware - FP_with_delay_aware) / FP_without_delay_aware
+  Ý nghĩa: Watermark + retraction giảm bao nhiêu % FP
+
+SENSITIVITY ANALYSIS (E1-E3):
+────────────────────────────────────────────────
+
+E1 — Pane size (30s / 1m / 5m / 10m):
+  Đo: P99 latency, avg latency, throughput
+  Mong đợi:
+    - Pane nhỏ → nhiều overhead (nhiều pane, nhiều bulk load)
+    - Pane lớn → tree lớn → Box Dropping kém hiệu quả
+    - Sweet spot: 1-5 phút cho NYC Taxi dataset
+
+E2 — α (EMA learning rate) (0.01 / 0.05 / 0.1 / 0.2):
+  Đo: Precision, Recall, F1 (với drift data)
+  Mong đợi:
+    - α nhỏ → thích nghi chậm → false positives khi drift
+    - α lớn → thích nghi nhanh → có thể over-adapt
+    - α = 0.05 là sweet spot cho NYC Taxi
+
+E3 — k_max (dimension cap) (2 / 3 / 5 / 10):
+  Đo: RAM, throughput, precision/recall
+  Mong đợi:
+    - k_max nhỏ → ít chiều → Box Dropping hiệu quả
+    - k_max lớn → curse of dimensionality
+    - DC1-DC3 chỉ cần k=2
+
+BASELINES CHI TIẾT:
+────────────────────────────────────────────────
+
+1. NL-Stream (Nested Loop):
+   - Không có KD-Tree, không có Pane, không có EMA, không có Retraction
+   → Mục đích: Prove O(N²) là bottleneck
+
+2. Single-Tree-DaQ:
+   - Có KD-Tree (1 tree cho toàn window)
+   → Mục đích: Prove 1 tree lớn → fragmentation/spike latency
+
+3. Static-Box-DaQ:
+   - Có KD-Tree + Pane
+   - Box tĩnh (không EMA), có retraction
+   → Mục đích: Prove concept drift → false positives
+
+4. WAVES-SingleRule:
+   - Đầy đủ mọi thành phần
+   - KHÔNG shared optimizer (mỗi rule = tree riêng)
+   → Mục đích: Đo overhead khi không share indexing
+
+5. Buffer-Wait-DaQ:
+   - Đầy đủ mọi thành phần
+   - KHÔNG retraction, watermark như barrier
+   → Mục đích: Prove detection latency cao khi chờ
+
+6. WAVES-Full:
+   - Đầy đủ mọi thành phần
+   → Mục đích: Performance ceiling
+
+BENCHMARK PIPELINE: B1 → B2 → B3 → B4
+
+B1 — NYC Taxi Base Prep:
+  Nguồn: NYC Taxi Yellow Cab (CSV/Parquet)
+  Mục đích: Loại lỗi vật lý, chuẩn hóa schema → tập sạch
+
+B2 — Drift Injection (Concept Drift):
+  Mục đích: Tăng trip_duration theo time-of-day pattern
+  Cấu hình: α = 0.05 (learning rate nhỏ → thích nghi chậm)
+
+B3 — Fraud Injection (DC1–DC3):
+  DC1: Inject fare_distance violations
+  DC2: Inject duration anomalies
+  DC3: Inject toll route anomalies
+  Mục đích: Ground truth cho Precision/Recall
+
+B4 — Late / Out-of-Order Injection:
+  ~90% on-time, ~10% late 120–300 giây
+  Mục đích: Đo false alert reduction rate
+
+Icewafl Reference (EDBT 2025):
+  Paper: "Icewafl: A Configurable Data Stream Polluter"
+  DOI: 10.48786/edbt.2025.64
+
+
+================================================================================
+SLIDE 18 — Đánh giá Benchmark: Các Baseline so sánh
+================================================================================
+
+SÁU BASELINE SYSTEMS:
+
+1. NL-Stream (Nested Loop Stream):
+   - Không có KD-Tree
+   - Không có Pane
+   - Không có EMA
+   - Không có Retraction
+   → Mục đích: Chứng minh O(N²) là nút thắt cổ chai
+   → Throughput baseline thấp nhất
+
+2. Single-Tree-DaQ:
+   - Có KD-Tree (1 tree cho toàn window)
+   - Không có Pane
+   - Không có EMA
+   - Không có Retraction
+   → Mục đích: Chứng minh 1 tree lớn → fragmentation/spike latency
+
+3. Static-Box-DaQ:
+   - Có KD-Tree
+   - Có Pane
+   - Không có EMA (box tĩnh)
+   - Có Retraction
+   → Mục đích: Drift → false positive (box không thích nghi)
+
+4. WAVES-SingleRule:
+   - Có KD-Tree
+   - Có Pane
+   - Có EMA
+   - Có Retraction
+   - Không có Shared Optimizer (mỗi rule = tree riêng)
+   → Mục đích: Đo overhead khi không share indexing
+
+5. Buffer-Wait-DaQ:
+   - Có KD-Tree
+   - Có Pane
+   - Có EMA
+   - Không có Retraction
+   → Mục đích: Detection latency cao (chờ watermark như barrier)
+
+6. WAVES-Full:
+   - Đầy đủ mọi thành phần
+   → Mục đích: Performance ceiling
+
+BẢNG SO SÁNH:
+         KD-Tree | Pane | EMA | Retraction
+NL-Stream  ✗      | ✗    | ✗   | ✗
+Single-Tree ✓      | ✗    | ✗   | ✗
+Static-Box ✓       | ✓    | ✗   | ✓
+SingleRule  ✓       | ✓    | ✓   | ✓
+Buffer-Wait ✓       | ✓    | ✓   | ✗
+WAVES-Full  ✓       | ✓    | ✓   | ✓
+
+
+================================================================================
+SLIDE 19 — Đánh giá Benchmark: Fault Injection
+================================================================================
+
+TẠI SAO CẦN FAULT INJECTION?
+
+Chỉ chạy trên dữ liệu sạch → KHÔNG ĐỦ
+→ Cần tạo ra các tình huống: delayed, out-of-order, drift
+
+Nguồn tham chiếu: Icewafl (EDBT 2025)
+- Data polluter: inject errors vào existing data
+- Khác với data synthesizer: tạo data từ đầu
+- Mục đích: Đánh giá DQ tools với ground truth
+
+----------------------------------------------------------------------
+BENCHMARK PIPELINE: B1 → B2 → B3 → B4
+----------------------------------------------------------------------
+
+B1 — NYC Taxi Base Prep:
+  Nguồn: NYC Taxi Yellow Cab (CSV/Parquet)
+  Trường: tpep_pickup/dropoff_datetime, PULocationID, DOLocationID,
+          trip_distance, fare_amount, total_amount, trip_duration, tolls_amount
+  Mục đích: Loại lỗi vật lý, chuẩn hóa schema → tập sạch
+
+B2 — Drift Injection (Concept Drift):
+  Mục đích: Tăng trip_duration theo time-of-day pattern
+  Hiệu ứng: EMA box phải thích nghi, không thì → false alert
+  Cấu hình: α = 0.05 (learning rate nhỏ → thích nghi chậm)
+
+B3 — Fraud Injection (DC1–DC3):
+  DC1: Inject fare_distance violations (fare cao bất thường)
+  DC2: Inject duration anomalies (chênh lệch lớn)
+  DC3: Inject toll route anomalies (tolls bất thường)
+  Mục đích: Ground truth cho Precision/Recall
+
+B4 — Late / Out-of-Order Injection:
+  ~90% on-time (đến đúng thứ tự)
+  ~10% late 120–300 giây (đến muộn hoặc sai thứ tự)
+  Mục đích: Đo false alert reduction rate
+
+QUAN TRỌNG: Sort toàn bộ DataFrame theo IngestionTime bước CUỐI CÙNG
+→ Giữ đúng thứ tự ingestion trong file replay
+
+
+================================================================================
+SLIDE 20 — Một số câu hỏi nghiên cứu
+================================================================================
+
+Q1: KD-Tree + Pane-based Forest thực sự vượt O(N²)?
+→ Đo throughput: NL-Stream vs WAVES-Full trên cùng dataset
+→ P99 latency ổn định không khi window size tăng?
+→ Throughput giảm bao nhiêu khi tăng số luật DC?
+
+Q2: EMA + Retraction có giữ F1 khi có concept drift?
+→ Đo Precision/Recall/F1: WAVES-Full vs Static-Box-DaQ
+→ Cold start: warm-up period đủ ngắn không?
+→ Retraction có tạo alert flapping không?
+
+Q3: Shared Rule Optimizer scale đến đâu?
+→ Memory footprint khi 10 / 50 / 100 luật DC
+→ Throughput có giảm tuyến tính với số luật?
+→ k_max = 5 có phù hợp cho DC1–DC3 (chỉ cần k=2)?
+
+Q4: Pane size tối ưu là bao nhiêu?
+→ Pane quá nhỏ: nhiều overhead (nhiều pane, nhiều bulk load)
+→ Pane quá lớn: tree lớn → Box Dropping kém hiệu quả
+→ Đo P99 latency vs pane_size: 30s / 1m / 5m / 10m
+
+Q5: wait_for_late = 300s có đủ cho NYC Taxi?
+→ NYC Taxi window = 10 phút
+→ 300s = 8.3% của window
+→ Late data 5 phút → có đủ không?
+→ Thử nghiệm với nhiều giá trị: 60s / 180s / 300s / 600s
+
+Q6: Alert deduplication có hoạt động đúng?
+→ Alert_id = f"alert_{dc_id}_{window_id}_{query_id}"
+→ Late event retract → tạo alert mới → ID khác?
+→ Cần deduplicate thế nào để tránh duplicate alerts?
+
+
+================================================================================
+SLIDE 21 — Kết luận kiến trúc WAVES
+================================================================================
+
+WAVES = Stream DaQ + Rapidash + Weever + Watermark
+
+ĐIỂM ĐỘT PHÁ:
+
+1. Pane-based Forest thay vì 1 tree lớn
+   → Tree size bị cap bởi pane_size
+   → O(1) DROP pane khi expire
+   → Không bottleneck khi window tăng
+
+2. KD-Tree Bulk Load + Box Dropping
+   → O(N log N) build, O(log N) query trung bình
+   → Box Dropping prune nhánh không giao
+   → Batched traversal cho multi-rule
+
+3. Elastic Box với EMA
+   → Tự thích nghi với concept drift
+   → clamp(k·σ, Δ_min, Δ_max) — padding thông minh
+   → Cold start: fallback về static box
+
+4. Delay-Aware Alerting
+   → Provisional alert ngay khi phát hiện
+   → Final alert khi watermark advance + wait_for_late
+   → Retraction khi late data invalidate
+
+5. Tombstone Filter
+   → O(1) lookup tại lá KD-Tree
+   → Bỏ ghost/retracted data không cần xóa khỏi tree
+
+TỔNG HỢP RQ vs MODULES:
+
+RQ1 Throughput: Rapidash + Weever + Ingestion + Window
+RQ2 F1 (drift+late): Logical Engine + Decision + Tombstone
+RQ3 Scale (50-100 rules): Shared Optimizer + Rapidash batched
+RQ4 Trade-off: Elastic Box + Weever + Optimizer
+
+DATASET: NYC Taxi Yellow Cab
+BASELINE: NL-Stream, Single-Tree, Static-Box, WAVES-SingleRule, Buffer-Wait
+METRICS: Throughput, P99 latency, Precision, Recall, F1, RAM
+
+
+================================================================================
+SLIDE 22 — Tại sao backend không đủ? (Research Gaps phần 2)
+================================================================================
+
+Câu hỏi phản biện thường gặp: "Backend chặn được mà, sao cần WAVES?"
+
+Câu trả lời ngắn gọn:
+
+Backend CHỈ đủ với 3 loại luật:
+  1. Luật đơn bản ghi
+  2. Luật đồng bộ trong 1 request
+  3. Luật không có late/out-of-order data
+
+WAVES CẦN THIẾT khi luật thuộc 1 trong 5 nhóm:
+  1. Cross-record    — phải nhìn nhiều record cùng lúc
+  2. Cross-service   — dữ liệu nằm ở nhiều microservice
+  3. Cross-time      — phải nhìn cửa sổ thời gian / lịch sử gần
+  4. Late-data-aware — cần provisional + retract
+  5. High-rate / low-latency — không được phép ép backend/DB gánh join
+                                   lịch sử liên tục
+
+Backend check được:    "stock hiện tại"
+WAVES check được:      "stock consistency theo thời gian thực
+                        giữa nhiều dòng sự kiện"
+
+Đây cũng khớp với thiết kế kiến trúc WAVES:
+  Logical violation engine (cross-record)
+  Pane-based forest (cross-time)
+  Watermark decision layer (late-data-aware)
+  Batched search (high-rate / low-latency)
+
+
+================================================================================
+SLIDE 23 — Ví dụ 1: Ride-hailing — 1 driver, 2 chuyến chồng thời gian
+================================================================================
+
+DC: Một driver không thể có hai chuyến đang active cùng lúc.
+
+Backend vs WAVES:
+- Backend: A có thể nằm ở Trip Service, trạng thái online/offline ở Driver Session Service, thiết bị/vị trí ở Telemetry Service, sự kiện kết thúc chuyến đến muộn do mất 3G/4G
+- WAVES: Theo dõi trên luồng sự kiện, tổng hợp từ nhiều service, cross-service DC, Provisional → Retract
+
+VẤN ĐỀ KHI NHÉT VÀO BACKEND:
+  • Phải gọi chéo service (coupling)
+  • Phải query lịch sử mỗi request
+  • Phải phân biệt event_time / processing_time
+  • Phải có retract nếu chuyến A thực ra đã kết thúc nhưng event đến trễ
+
+ĐIỂM ĐỘC QUYỀN CỦA WAVES:
+  Không phải là "check overlap" — mà là DÁM RA QUYẾT ĐỊNH SỚM
+  RỒI TỰ SỬA SAI SAU.
+
+CÂU CHỐT:
+  Backend có thể chặn một request.
+  WAVES mới chặn được một hành vi gian lận kéo dài
+  qua nhiều sự kiện không đồng bộ.
+
+
+================================================================================
+SLIDE 24 — Ví dụ 2: Fintech — một tài khoản mâu thuẫn trên hai kênh
+================================================================================
+
+DC: Một tài khoản không thể đồng thời:
+  • Bị đóng băng ở Fraud Service
+  • Nhưng vẫn được Core Payment Service duyệt thanh toán
+  • VÀ đồng thời Mobile App lại cho phép cash-out
+
+ĐÂY LÀ RÀNG BUỘC CHÉO TRẠNG THÁI GIỮA NHIỀU SERVICE:
+  → Không còn là check local nữa.
+
+VẤN ĐỀ BACKEND PHẢI GIẢI QUYẾT:
+  Mỗi service có bản sao trạng thái riêng, cache riêng, độ trễ replication riêng, race condition, stale read, check pass ở service A nhưng fail ở service B, kết quả không nhất quán toàn cục
+
+ĐIỂM ĐỘC QUYỀN CỦA WAVES:
+  WAVES làm "POLICY PLANE" đứng trên các service.
+  Luật không bị chôn trong từng codebase.
+  Một luật thay đổi, không phải sửa 7 service.
+
+CÂU CHỐT:
+  Giá trị của WAVES ở đây KHÔNG PHẢI tốc độ,
+  mà là THỐNG NHẤT THỰC THI LUẬT TOÀN HỆ THỐNG.
+
+
+================================================================================
+SLIDE 25 — Ví dụ 3: E-commerce — oversell do nhiều kênh cùng đụng tồn kho
+================================================================================
+
+DC: Tổng số lượng đã reserve + đã paid + đang pick-pack
+    không được vượt quá tồn kho khả dụng.
+
+LUẬT NÀY BỊ XÉ RA Ở:
+  Web Checkout, App Checkout, POS Offline, Warehouse Alloc, Payment Callback, Cancel/Timeout
+
+MỖI BACKEND CHỈ THẤY MỘT MẢNH CỦA "INVENTORY TRUTH":
+  • SELECT stock → trừ → UPDATE → lock DB
+  • Tăng contention
+  • Sinh race
+  • Oversell hoặc block oan
+
+ĐIỂM ĐỘC QUYỀN CỦA WAVES:
+  WAVES theo dõi chuỗi sự kiện
+  reserve → pay → release → allocate
+  trên luồng, nên check được ràng buộc trên DIỄN TIẾN,
+  không chỉ trên SNAPSHOT DB.
+
+CÂU CHỐT:
+  Backend check được "stock hiện tại".
+  WAVES check được "stock consistency theo thời gian thực
+  giữa nhiều dòng sự kiện".
+
+
+================================================================================
+SLIDE 26 — Ví dụ 4: Logistics — parcel hiện diện ở hai hub cách xa trong phi vật lý
+================================================================================
+
+DC: Một kiện hàng không thể được scan ở Hub A lúc 10:00
+    và ở Hub B cách 200km lúc 10:20
+    nếu thời gian vận chuyển tối thiểu là 3 giờ.
+
+ĐÂY LÀ DC KIỂU:
+  • Cross-record (so sánh nhiều scan events)
+  • Có ngữ cảnh không gian-thời gian
+  • Cần lookup lịch sử gần nhất
+  • Cần xử lý out-of-order scan (handheld device)
+
+BACKEND PHẢI LÀM MỖI LẦN SCAN MỚI:
+  Lục lịch sử gần nhất, đối chiếu tuyến, đối chiếu hub,
+  xử lý late scan từ handheld device, quá nhiều DB queries,
+  O(N) mỗi scan, không scale khi hàng triệu scan/ngày
+
+ĐIỂM ĐỘC QUYỀN CỦA WAVES — RAPIDASH + ELASTIC BOXES:
+  Luật logic được biến thành truy vấn không gian-thời gian.
+  Hệ thống tìm candidate violations HIỆU QUẢ HƠN brute-force.
+
+CÂU CHỐT:
+  Với loại luật này, backend không chỉ CHẬM — mà còn
+  SAI MÔ HÌNH TÍNH TOÁN.
+
+
+================================================================================
+SLIDE 27 — Ví dụ 5: AdTech — anonymous + KYC-verified trong cùng session chain
+================================================================================
+
+DC: Chuỗi sự kiện của cùng một entity không được đồng thời
+    thỏa hai trạng thái mâu thuẫn về danh tính / consent / segment.
+
+VÍ DỤ THỰC TẾ:
+  Consent ở service A, Profile ở service B, Purchase ở service C,
+  Session events ở Kafka, Identity resolution cập nhật MUỘN
+
+VẤN ĐỀ VỚI BACKEND:
+  Entity chưa chắc đã resolve ngay, phải đánh giá luật trên chuỗi event
+  đang dần hoàn thiện, không phải tại một request tức thời,
+  stale identity resolution = sai luật, retract không có trong backend
+
+ĐIỂM ĐỘC QUYỀN CỦA WAVES:
+  WAVES cho phép:
+    ✓ Phát hiện PROVISIONAL inconsistency
+    ✓ Chờ identity stitching đến muộn
+    ✓ RETRACT nếu resolve lại entity
+
+ĐÂY LÀ LỚP BÀI TOÁN "INCOMPLETE TRUTH IN MOTION":
+  → Backend API không được thiết kế cho nó.
+
+
+================================================================================
+SLIDE 28 — Ví dụ 6: Marketplace — device phục vụ nhiều seller "độc lập"
+================================================================================
+
+DC: Một device fingerprint / IP / payment instrument
+    không được đồng thời gắn với nhiều seller / driver / buyer
+    tưởng là độc lập
+    trong cùng cửa sổ thời gian và cùng mô thức hành vi.
+
+ĐÂY LÀ LUẬT CỰC MẠNH ĐỂ BÁN GIÁ TRỊ ENTERPRISE:
+  • Cắt ngang nhiều domain
+  • Cần global correlation
+  • Cần sliding window
+  • Cần nhiều tín hiệu mềm, không phải 1 trường cứng
+
+SO SÁNH:
+  Backend đơn lẻ: Chỉ thấy request hiện tại, không thấy cross-entity, check 1 record đúng/sai
+  WAVES: Thấy mẫu hình tập thể, cross-entity pattern consistency, check toàn mạng hành vi
+
+ĐIỂM ĐỘC QUYỀN CỦA WAVES:
+  Đây là "FRAUD TOPOLOGY DETECTION BẰNG DENIAL CONSTRAINTS"
+  — không còn là business validation nữa.
+
+CÂU CHỐT:
+  WAVES không chỉ check một record đúng hay sai.
+  WAVES check TOÀN MẠNG HÀNH VI có vi phạm logic không.
+
+
+================================================================================
+SLIDE 29 — Cách nói "độc quyền hơn" trước hội đồng
+================================================================================
+
+ĐỪNG NÓI:
+  ❌ "WAVES giúp check logic nhanh hơn backend."
+
+HAY NÓI:
+  ✅ "Backend chỉ thực thi local invariants.
+       WAVES thực thi global temporal invariants."
+
+HOẶC MẠNH HƠN:
+  ✅ "Giá trị độc quyền của WAVES không nằm ở việc phát hiện
+       một lỗi, mà nằm ở việc duy trì tính NHẤT QUÁN LOGIC
+       TOÀN HỆ THỐNG trong khi dữ liệu vẫn đang đến dở,
+       đến muộn, đến lệch thứ tự, và phân tán ở nhiều service."
+
+HOẶC CHỐT HẠ KIỂU ENTERPRISE:
+  ✅ "Khi doanh nghiệp còn nhỏ, luật nằm trong code.
+       Khi doanh nghiệp lớn, luật phải được tách khỏi code
+       và đặt vào một control plane độc lập.
+       WAVES chính là control plane đó cho denial constraints
+       thời gian thực."
+
+
+================================================================================
+SLIDE 30 — Câu "đinh" nên dùng trong proposal / defense
+================================================================================
+
+CÂU ĐINH (bản chuẩn):
+
+  "WAVES không cạnh tranh với backend ở bài toán validation cục bộ.
+   WAVES giải quyết lớp Denial Constraints mà backend không thể
+   gánh một cách bền vững:
+   luật chéo bản ghi, chéo dịch vụ, chéo thời gian,
+   có dữ liệu đến muộn, và cần phản ứng ngay
+   nhưng vẫn phải có cơ chế sửa sai."
+
+─────────────────────────────────────────────────────────────────────
+HOẶC BẢN SẮC HƠN:
+─────────────────────────────────────────────────────────────────────
+
+  "Nếu IF/ELSE là luật giao thông tại một ngã tư,
+   thì WAVES là trung tâm điều phối giao thông của cả thành phố."
+
+
+─────────────────────────────────────────────────────────────────────
+PHÂN LOẠI 5 NHÓM LUẬT — KHUNG PHẢN CÔNG "BACKEND ĐỦ RỒI":
+─────────────────────────────────────────────────────────────────────
+
+  ┌───────────────┬────────────────────────┬──────────────────────────┐
+  │ NHÓM LUẬT    │ VÍ DỤ                 │ BACKEND ĐỦ?            │
+  ├───────────────┼────────────────────────┼──────────────────────────┤
+  │ Cross-record  │ 2 chuyến chồng thời   │ KHÔNG — phải nhìn      │
+  │               │ gian cùng driver       │ nhiều record           │
+  ├───────────────┼────────────────────────┼──────────────────────────┤
+  │ Cross-service │ Tài khoản đóng băng   │ KHÔNG — dữ liệu ở     │
+  │               │ nhưng vẫn thanh toán   │ nhiều service          │
+  ├───────────────┼────────────────────────┼──────────────────────────┤
+  │ Cross-time    │ Parcel ở 2 hub cách   │ KHÔNG — phải nhìn      │
+  │               │ 200km trong 20 phút   │ cửa sổ thời gian      │
+  ├───────────────┼────────────────────────┼──────────────────────────┤
+  │ Late-aware    │ Chuyến kết thúc đến   │ KHÔNG — không có        │
+  │               │ muộn do mất 3G/4G      │ retract mechanism       │
+  ├───────────────┼────────────────────────┼──────────────────────────┤
+  │ High-rate /   │ E-commerce oversell    │ KHÔNG — không scale     │
+  │ low-latency   │ nhiều kênh cùng lúc   │ khi triệu events/ngày  │
+  └───────────────┴────────────────────────┴──────────────────────────┘
+
+
+================================================================================
+SLIDE PHỤ — Chi tiết kỹ thuật: Multi-column KD-Tree & Dimension Cap
+================================================================================
+
+TẠI SAO KHÔNG DÙNG TẤT CẢ CỘT TRONG KD-TREE:
+────────────────────────────────────────────────
+
+VẤN ĐỀ: Curse of Dimensionality
+
+Khi số chiều k tăng:
+- Hypercube volume tăng theo k
+- Mỗi chiều thêm thì "khoảng trống" tăng
+- Hầu hết không gian là "trống"
+
+Điều này ảnh hưởng Box Dropping:
+- Box của node phải bao quát nhiều chiều hơn
+- Query region có khả năng giao với hầu hết boxes
+- Prune efficiency giảm → gần như duyệt toàn bộ tree
+
+RAPIDASH STRATEGY - DIMENSION REDUCTION:
+────────────────────────────────────────────────
+
+Rapidash giải quyết bằng cách:
+
+1. TÁCH BIỆT EQUALITY VÀ INEQUALITY COLUMNS:
+   - Equality columns → Hash partition (tạo groups nhỏ)
+   - Inequality columns → Range search dimensions
+
+   Ví dụ DC1:
+   - Equality: PULocationID_s == PULocationID_t
+   - Inequality: fare_s <= fare_t AND distance_s < distance_t
+   → Hash partition theo PULocationID
+   → Range search chỉ 2 chiều (fare, distance)
+
+2. k_max CAP (Dimension Cap):
+   - Giới hạn số chiều cho range search
+   - Thường k_max = 2-5 là đủ cho DC
+   - Các chiều khác được xử lý bằng filter sau
+
+WAVES ADAPTATION - SHARED RULE OPTIMIZER:
+────────────────────────────────────────────────
+
+Khi có NHIỀU DC rules cùng lúc:
+
+DC1: PULocationID + (distance, fare)
+DC2: PULocationID + (trip_duration)
+DC3: DOLocationID + (tolls)
+
+→ Shared Optimizer nhận ra:
+- DC1 và DC2 có PULocationID chung
+- → Group chúng: hash partition theo PULocationID
+- → DC3 riêng: hash partition theo DOLocationID
+
+→ Kết quả:
+- DC1 + DC2: 1 range search trên 2 dimensions (dùng chung tree)
+- DC3: 1 range search trên 1 dimension
+- Total trees: 2 thay vì 3
+
+THUMB RULES CHO WAVES:
+────────────────────────────────────────────────
+
+1. k_max = 5 cho range search dimensions
+   → Đủ cho hầu hết DCs (thường chỉ cần 1-3)
+   → Tránh curse of dimensionality
+
+2. Equality columns → Hash partition
+   → Luôn dùng cho grouping
+   → Không tăng search space
+
+3. Inequality columns được chọn:
+   → Ưu tiên columns có BÉO distribution (nhiều giá trị)
+   → Columns có HIGH selectivity (giảm candidate count)
+
+4. Columns có cardinality thấp (VD: boolean flags):
+   → Thường không cần index
+   → Filter sau traversal
+
+Nguồn: Rapidash VLDB 2024, arXiv:2309.12436
+
+
+================================================================================
+================================================================================
+                END OF SLIDE CONTENT
+================================================================================

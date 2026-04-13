@@ -16,16 +16,21 @@
 \usepackage{setspace}
 \usepackage{titlesec}
 \usepackage{ragged2e}
+\usepackage[table]{xcolor}
+\usepackage{pifont}
+\usepackage{amsmath}
+\usepackage{amssymb}
 
 \setstretch{1.2}
 \setlength{\parindent}{1.25em}
 \setlength{\parskip}{0.4em}
 \setlist[itemize]{leftmargin=2em}
-\graphicspath{{assets/}}
+\graphicspath{{./assets/}}
 \hypersetup{breaklinks=true}
 \urlstyle{same}
 \setlength{\emergencystretch}{3em}
 \newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\RaggedLeft\arraybackslash}p{#1}}
 \newcommand{\tableurl}[1]{\href{#1}{\nolinkurl{#1}}}
 \titleformat{\chapter}[hang]{\normalfont\Large\bfseries}{\thechapter.}{0.5em}{}
 \titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.5em}{}
@@ -35,6 +40,10 @@
 \begin{document}
 
 \input{sections/intro_background}
+\input{sections/modules}
 \input{sections/method_eval}
+
+\bibliographystyle{plain}
+\bibliography{references}
 
 \end{document}
