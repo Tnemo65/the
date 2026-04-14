@@ -26,6 +26,20 @@
 | [Weever_context.md](base/Weever_context.md) | base_repo/Weever | Pane-based forest, LT-Tree, O(1) DROP |
 | [Icewafl_context.md](base/Icewafl_context.md) | base_repo/Icewafl | Data injection pipeline (Flink→Pathway adaptation) |
 
+|## Benchmark Research
+
+**File:** [benchmark_research.md](../benchmark_research.md)
+
+> Comprehensive survey of 36+ systems, 44 key papers (VLDB/SIGMOD/ICDE/EDBT/ICML 2013–2025) related to WAVES competitive landscape.
+
+**Key Finding:** No system in 36+ surveyed systems measures Precision/Recall/F1 on stream DC violations — this is WAVES's primary contribution.
+
+**Top Metrics (Tier 1 — WHITE SPACE):** F1 Score (no drift, with drift, with late data), Retraction Rate, Precision/Recall
+
+**Top Papers:** Rapidash (2023), StreamDaQ (2025), False DC Discovery (2025), CPOD (2021), NAB (2015), FiBA (2019), SODA (2023), SWIX (2024)
+
+**Recommended Claims:** "First system to measure F1/Precision/Recall on stream DC violations" — verifiable from literature survey.
+
 ## Cấu trúc Code (WAVES/)
 
 ```

@@ -6,6 +6,56 @@
 
 ## Changelog
 
+### 2026-04-13 — Benchmark Research & Competitive Analysis
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+
+- `benchmark_research.md` — Comprehensive landscape survey:
+  - **36+ systems** được tìm và phân tích chi tiết
+  - **44 key papers** (VLDB/SIGMOD/ICDE/EDBT/ICML 2013–2025)
+  - **5 white space** được xác định rõ ràng
+  - **11 recommended metrics** được phân loại theo tier
+  - **Bảng so sánh metrics** đầy đủ giữa các hệ thống
+  - **35 key papers** với URL/DOI đầy đủ
+  - **Claims** phân loại: cái nào đưa được, cái nào không
+  - **Paper structure** cho Related Work section
+
+- `docs/context.md` — Cập nhật với reference đến benchmark_research.md
+
+**Key findings:**
+
+| # | Finding | Evidence |
+|---|--------|----------|
+| 1 | **WHITE SPACE**: No system measures P/R/F1 on stream DC violations | Survey of 36+ systems found zero |
+| 2 | **WHITE SPACE**: No system combines EMA + DC verification | All EMA systems univariate; all DC systems static |
+| 3 | **WHITE SPACE**: No system has retraction mechanism for DC | All retraction systems for materialized views, not DC |
+| 4 | **WHITE SPACE**: No system combines pane forest + KD-Tree + retraction | Weever pane+KD-Tree; Materialize retraction; WAVES all three |
+| 5 | **WHITE SPACE**: No system has shared multi-rule optimization for DC | Rapidash one tree per rule; WAVES batches across rules |
+
+**Top metrics ưu tiên:**
+
+```
+TIER 1 — WHITE SPACE (không đối thủ):
+  1. F1 Score (no drift)        vs Static-Box-DaQ
+  2. F1 Score (with drift)     vs Static-Box-DaQ
+  3. F1 Score (with late data) vs Buffer-Wait-DaQ
+  4. Retraction Rate            ← WAVES unique metric
+  5. Precision/Recall (all)
+
+TIER 2 — CÓ baseline:
+  6. Throughput                vs StreamDaQ
+  7. P99 Latency             vs RisingWave
+  8. Detection Latency        vs Buffer-Wait-DaQ
+  9. Memory (50-100 rules)   vs WAVES-SingleRule
+
+TIER 3 — Ablation:
+  A1-A5: Mỗi cơ chế đều đo được
+```
+
+---
+
 ### 2026-04-13 — Phase 3/4: Benchmark Infrastructure + Checklist Update
 
 **Trạng thái:** Đang thực hiện

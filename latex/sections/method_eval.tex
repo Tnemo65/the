@@ -41,17 +41,17 @@ Rapidash đọc snapshot forest từ Weever (stateless về index). Decision nh�
 Bốn câu hỏi nghiên cứu cốt lõi, mỗi câu gắn với giả thuyết, metrics và modules liên quan.
 
 {\small
-\begin{longtable}{|L{0.06\textwidth}|L{0.28\textwidth}|L{0.24\textwidth}|L{0.20\textwidth}|L{0.12\textwidth}|}
+\begin{longtable}{|L{0.06\textwidth}|L{0.38\textwidth}|L{0.20\textwidth}|L{0.20\textwidth}|L{0.06\textwidth}|}
 \hline
 \textbf{RQ} & \textbf{Câu hỏi} & \textbf{Giả thuyết} & \textbf{Metrics} & \textbf{Modules} \\
 \hline
-RQ1 & Throughput vượt nested-loop truyền thống? & KD-Tree + pane-based forest cắt tỉa không gian & Throughput, P99 latency, detection latency & Rapidash, Weever, Ingestion, Window \\
+RQ1 & Làm thế nào để phát hiện vi phạm denial constraints trên dữ liệu luồng với chi phí thấp hơn $O(N^2)$, trong khi vẫn duy trì throughput ổn định khi kích thước cửa sổ tăng và dữ liệu liên tục được thêm/xóa theo cửa sổ trượt? & KD-Tree + pane-based forest cắt tỉa không gian; bulk-load và box dropping giảm overhead & Throughput, P99 latency, detection latency & Rapidash, Weever, Ingestion, Window \\
 \hline
-RQ2 & EMA + Tombstone/Retraction giữ F1 khi drift + late data? & Elastic box tự thu hẹp/mở rộng theo context; provisional vs final; retraction sửa false alert & Precision, Recall, F1 (sau retraction) & LogicalEngine, Decision, Tombstone \\
+RQ2 & Làm thế nào để duy trì độ chính xác (Precision/Recall/F1) của cảnh báo vi phạm logic trong môi trường streaming khi phân phối dữ liệu thay đổi theo thời gian (concept drift) và dữ liệu đến không đúng thứ tự hoặc đến muộn (out-of-order / late arrivals)? & Elastic box tự thu hẹp/mở rộng theo context; provisional vs final; retraction sửa false alert & Precision, Recall, F1 (sau retraction) & LogicalEngine, Decision, Tombstone \\
 \hline
-RQ3 & Mở rộng khi 50--100 luật DC? & Shared indexing + batched multi-rule traversal & Memory footprint, throughput & SharedRuleOptimizer, Rapidash batched \\
+RQ3 & Shared indexing và tối ưu hóa đa truy vấn ảnh hưởng ra sao đến khả năng mở rộng (scalability) và chi phí bộ nhớ khi hệ thống phải xử lý đồng thời một tập hợp lớn các ràng buộc logic phức tạp? & Shared indexing + batched multi-rule traversal giảm redundant traversals & Memory footprint, throughput & SharedRuleOptimizer, Rapidash batched \\
 \hline
-RQ4 & Trade-off siêu tham số? & $\alpha$ EMA, pane size, dimension cap ảnh hưởng khác nhau & P99 / avg latency, F1, RAM & ElasticBox, Weever, Optimizer \\
+RQ4 & Những đánh đổi nào giữa hiệu năng hệ thống và chất lượng cảnh báo được chi phối bởi các siêu tham số của mô hình và nguyên tắc nào để tối ưu hóa không gian tham số này? & $\alpha$ EMA, pane size, dimension cap ảnh hưởng khác nhau lên latency và accuracy & P99 / avg latency, F1, RAM & ElasticBox, Weever, Optimizer \\
 \hline
 \end{longtable}
 }
@@ -81,8 +81,6 @@ Buffer-Wait-DaQ & \ding{51} & \ding{51} & \ding{51} & \ding{55} & Chứng minh d
 }
 
 \textbf{Ghi chú ký hiệu:} \ding{51} = có \,|\, \ding{55} = không
-
-\section{Các luật Denial Constraints (DC1--DC3)}
 
 Ba luật benchmark được sử dụng để đo khả năng phát hiện vi phạm logic.
 

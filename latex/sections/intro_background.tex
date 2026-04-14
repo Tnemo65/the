@@ -72,12 +72,7 @@ GCP Dataplex & \cellcolor{red!25}\ding{55} & \cellcolor{red!25}\ding{55} & \cell
 \hline
 Monte Carlo / Bigeye & \cellcolor{red!25}\ding{55} & \cellcolor{red!25}\ding{55} & \cellcolor{red!25}\ding{55} & \cellcolor{red!25}\ding{55} & \cellcolor{red!25}\ding{55} \\
 \hline
-\textbf{Ghi chú ký hiệu:} \ding{51} = hỗ trợ \,|\, \ding{63} = hỗ trợ hạn chế \,|\, \ding{55} = không hỗ trợ \\
-\hline
-\end{longtable}
-}
-
-\textbf{Phân tích chi tiết từng nền tảng.}
+\textbf{Ghi chú ký hiệu:} \ding{51} = hỗ trợ \,|\, \ding{63} = hỗ trợ hạn chế \,|\, \ding{55} = không hỗ trợ
 
 \medskip\noindent\textbf{Apache Griffin} \cite{griffin}: Apache top-level project (2018, hiện archived). Điểm mạnh: 30+ built-in checks, Kafka integration, hỗ trợ batch và streaming. Điểm yếu: không DC checking, không watermark, dự án không còn được bảo trì. Khác biệt WAVES: DC engine riêng, watermark-aware decision layer.
 
@@ -129,27 +124,23 @@ Từ bốn nhóm tài liệu trên, có thể rút ra một khoảng trống kh�
   \item ra quyết định cảnh báo theo hướng delay-aware để giảm false alerts do late data.
 \end{itemize}
 
-\textbf{GAP 1 -- Denial Constraints trong Streaming DQ.}
+\textbf{GAP 1 -- Chi phí phát hiện DC trên luồng.}
 
-Các nghiên cứu gần đây cho thấy việc phát hiện vi phạm denial constraints trên dữ liệu luồng đối mặt với bốn thách thức cốt lõi. Thứ nhất, tính đúng đắn: cần event-time semantics để phân biệt vi phạm thật với hiện tượng thiếu dữ liệu tạm thời. Thứ hai, hiệu suất: cách đối chiếu cặp bản ghi brute-force có độ phức tạp $O(N^2)$, không scale khi kích thước cửa sổ tăng. Thứ ba, quản lý trạng thái: hệ thống phải cập nhật gia tăng khi cửa sổ trượt thay vì tính lại toàn bộ. Thứ tư, retraction: dữ liệu đến muộn có thể vô hiệu hóa cảnh báo đã phát trước đó, nên cần cơ chế rút lại.
+Phát hiện vi phạm denial constraints yêu cầu đối chiếu đa bản ghi trong cùng cửa sổ thời gian. Cách tiếp cận brute-force có độ phức tạp $O(N^2)$, không scale khi kích thước cửa sổ tăng. Thêm vào đó, đến 95\% constraints được tự động suy luận là FALSE khi thiếu ngữ cảnh, dẫn đến chi phí xử lý phí không cần thiết.
 
-Nguồn: VLDB 2025 Martin et al. (đến 95\% constraints được suy luận là FALSE do thiếu ngữ cảnh), Incremental DC Discovery \cite{springer2024incremental}, Stream DaQ \cite{arxiv2506streamdaq}.
+Nguồn: VLDB 2025 Martin et al., Incremental DC Discovery \cite{springer2024incremental}, Stream DaQ \cite{arxiv2506streamdaq}.
 
-\textbf{GAP 2 -- Watermark và Late Data trong thực tế.}
+\textbf{GAP 2 -- Luật tĩnh không thích nghi với concept drift.}
 
-Trong môi trường vận hành thực, watermark thường bị lag so với processing time do ba nguyên nhân chính từ Klink \cite{sigmod2021klink}: stragglers giữ watermark toàn cục, độ trễ mạng biến thiên, và các partition rỗng không produce dữ liệu. Hệ quả trực tiếp là cửa sổ không đóng được, trạng thái tiếp tục phình, và detection latency tăng.
+Các luật kiểm tra được định nghĩa bằng ngưỡng cố định (static thresholds). Khi phân phối dữ liệu thay đổi theo thời gian (kẹt xe, mưa bão, sự kiện đặc biệt), ngưỡng cố định không phản ánh ngữ cảnh thực tế, dẫn đến tỷ lệ false positive cao bất thường trong thời gian drift.
 
-Rapidash và Weever chưa gắn trực tiếp với event-time semantics và watermark. Các watermark papers lý thuyết tốt nhưng chưa tích hợp với engine phát hiện vi phạm. Đây là lý do WAVES đặt watermark làm thành phần trung tâm, không phải chi tiết triển khai phụ.
+Nguồn: Rapidash \cite{vldb2024rapidash}, Stream DaQ \cite{arxiv2506streamdaq}.
+
+\textbf{GAP 3 -- Thiếu cơ chế provisional--retract trong môi trường watermark.}
+
+Trong môi trường streaming thực, dữ liệu đến muộn (late arrivals) và out-of-order arrivals rất phổ biến do stragglers, độ trễ mạng biến thiên, và các partition rỗng không produce. Nếu hệ thống thiếu cơ chế provisional alert và retraction, mọi cảnh báo đều bị coi là chính thức ngay khi phát hiện, dẫn đến false alert tăng mạnh khi watermark bị lag.
 
 Nguồn: The Dataflow Model \cite{vldb2015dataflow}, Watermarks in Stream Processing \cite{vldb2017watermarks}, ProbSlack \cite{pods2018probslack}.
-
-\textbf{GAP 3 -- Box Dropping hiệu quả trong không gian đa chiều.}
-
-Rapidash giải bài toán phát hiện vi phạm trên dữ liệu tĩnh bằng orthogonal range search và hash partition. Tuy nhiên, khi số chiều $k$ tăng, hypercube volume tăng theo $k$, bounding boxes giao với hầu hết query regions, và box dropping trở nên kém hiệu quả --- trở về gần $O(N)$ trong không gian cao chiều.
-
-Rapidash giải quyết bằng: tách equality columns (hash partition) khỏi inequality columns (range search), giới hạn số chiều range search bằng $k_{\max}$, và boolean range search thay vì list all matches. WAVES mở rộng bằng Shared Rule Optimizer: gom nhóm các luật có equality columns chung, giữ $k_{\max} = 5$ (configurable), và infinite padding cho các chiều không dùng.
-
-Nguồn: Rapidash \cite{vldb2024rapidash}.
 
 \textbf{Tổng hợp:} WAVES được định vị như kiến trúc kết nối: lấy tổ chức luồng làm vỏ, lấy phát hiện vi phạm logic làm lõi, và dùng watermark để làm lớp ra quyết định cảnh báo.
 
