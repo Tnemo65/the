@@ -16,6 +16,7 @@
 | [problem_statement&scope.docx](design/problem_statement&scope.docx) | Bài toán, mục tiêu, phạm vi |
 | [cauhoi.docx](design/cauhoi.docx) | Bộ câu hỏi phản biện |
 | [extracted_content.txt](design/extracted_content.txt) | Nội dung trích xuất từ docx |
+| [baseline_benchmark_plan.md](baseline_benchmark_plan.md) | Kế hoạch benchmark để so trực tiếp với Ada-Context và benchmark phụ của WAVES |
 
 ## Base Projects (docs/base/)
 

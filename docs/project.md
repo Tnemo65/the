@@ -6,6 +6,68 @@
 
 ## Changelog
 
+### 2026-04-14 — Benchmark Plan For Ada-Context Comparison
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+
+- Thêm `docs/baseline_benchmark_plan.md`:
+  - chốt **2 benchmark chính** để so trực tiếp với published result của Ada-Context
+  - chốt **benchmark phụ** cho late/out-of-order, temporal errors, DC benchmark, rule scaling, system benchmark
+  - quy định rõ biến thể cần chạy:
+    - `WAVES-Context` cho benchmark chính
+    - `WAVES-Full` cho benchmark mở rộng
+  - quy định rõ **claim hợp lệ** và **claim không được phép** khi viết paper/thesis
+  - bổ sung thêm section **“Tóm tắt Baseline Benchmark — WAVES vs Ada-Context”**:
+    - bảng published result cần vượt
+    - dataset cần dùng
+    - cách chia `Nhóm A` (so trực tiếp) và `Nhóm B` (metric mới của WAVES)
+    - benchmark chính/phụ và 3 claim cần show trong paper
+    - đánh dấu rõ các giá trị chỉ là **target nội bộ** để tránh overclaim
+
+- Cập nhật `docs/context.md` để link tới `docs/baseline_benchmark_plan.md`
+
+### 2026-04-14 — Baseline Selection From `paper_to_baseline`
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+
+- Rà soát nhóm paper 2024–2026 trong `paper_to_baseline/` để chọn **1 baseline chính** phù hợp với hướng đề tài.
+- **Chốt baseline chính:** `paper_to_baseline/s10618-025-01095-6.pdf` — **Ada-Context: adaptive context-aware grid-based approach for curation of data streams** (*Data Mining and Knowledge Discovery*, 2025).
+- Ghi nhận rõ lý do **không** chọn các ứng viên còn lại làm baseline chính:
+  - `paper_to_baseline/Stream DaQ.pdf`: rất gần bài toán stream-first DQ, nhưng hiện là arXiv nên không đủ mạnh về venue/rank để làm đòn bẩy chính.
+  - `paper_to_baseline/Rapidash.pdf`, `paper_to_baseline/p1000-kaminsky.pdf`, `paper_to_baseline/1-s2.0-S0306437924000930-main.pdf`: rất mạnh cho DC detection / incremental detection / repair, nhưng lệch khỏi baseline hệ thống context-aware streaming monitoring end-to-end.
+  - `paper_to_baseline/DAFDiscover.pdf`, `paper_to_baseline/DCValidity.pdf`: PVLDB mạnh, nhưng thuộc nhánh dependency mining / DC validity, không phải baseline hệ thống monitoring.
+
+**Kết luận chọn baseline:**
+
+- **Ada-Context** là paper gần tên đề tài và hướng hệ thống nhất:
+  - stream data quality assessment/curation,
+  - context-aware,
+  - có cả internal + external context,
+  - có xử lý concept drift,
+  - có runtime + accuracy evaluation trên dữ liệu thật.
+- Đây là baseline phù hợp để WAVES chuyển sang hướng mới nếu cần:
+  - giữ lõi stream monitoring,
+  - bổ sung external context vào lớp logical/context layer,
+  - sau đó vượt baseline bằng các phần mà Ada-Context còn thiếu: DC checking, watermark, late-event handling, provisional/final/retraction lifecycle, pane/incremental index, multi-rule optimization.
+
+**Khoảng trống để WAVES đánh bại Ada-Context:**
+
+1. Ada-Context mạnh ở `context-aware cleansing/scoring`, nhưng chưa có `denial constraint checking`.
+2. Không có `watermark`, `late data`, `retraction`, `tombstone`, hay alert lifecycle.
+3. Phụ thuộc mạnh vào `context key` và lượng contextual data trong từng cell.
+4. Đánh giá thiên về `accuracy/precision/recall/F-score/runtime`, chưa chạm tới throughput + detection latency + retraction semantics kiểu WAVES.
+
+**Hướng tận dụng paper khác để vượt baseline:**
+
+- Mượn `Rapidash.pdf` cho lõi DC verification dựa trên range search.
+- Mượn `p1000-kaminsky.pdf` (Weever) cho incremental index / LT-tree / multi-DC scheduling.
+- Mượn `1-s2.0-S0306437924000930-main.pdf` cho tư duy repair/recheck trên delta khi xử lý late/retraction.
+- Dùng `Icewafl.pdf` để tạo benchmark temporal errors và drift/late scenarios.
+
 ### 2026-04-13 — Benchmark Research & Competitive Analysis
 
 **Trạng thái:** Hoàn thành
@@ -329,3 +391,26 @@ TIER 3 — Ablation:
 - [ ] 6.2 Artifact documentation (code, data, experiment artifacts)
 - [ ] 6.3 Reproducibility checklist
 - [ ] 6.4 Final project documentation
+
+### 2026-04-14 — Design Audit: `adapt` vs `upgrade` trong WAVES
+
+**Trạng thái:** Hoàn thành
+
+**Thay đổi:**
+
+- Đối chiếu `docs/design/extracted_content.txt` với code hiện tại trong `WAVES/waves/` để làm rõ bản chất từng module:
+  - **Chủ yếu adapt / port:** `ingestion`, `windowing`, `basic_dq`, lõi `rapidash` KD-tree traversal.
+  - **Adapt + redesign theo streaming:** `weever` pane-based forest gắn với `window_slide`, `tombstone` theo pane, `late_handler`.
+  - **Nâng cấp / contribution rõ của WAVES:** `logical_engine` (EMA + Elastic Box), `optimizer` (shared multi-rule grouping / active boxes), `decision` (provisional/final/retraction), và ngữ nghĩa `watermark + tombstone + late re-check` ở mức pipeline.
+
+**Kết luận kỹ thuật:**
+
+- Theo thiết kế hiện tại, WAVES **không chỉ là bản ghép cơ học** của StreamDaQ + Rapidash + Weever.
+- Phần mới có giá trị nhất của WAVES nằm ở **lớp điều phối/ngữ nghĩa**:
+  - biến luật tĩnh thành `Elastic Bounding Box` bằng EMA,
+  - gộp nhiều luật vào cùng không gian truy vấn,
+  - vận hành alert theo `provisional/final/retraction`,
+  - và gắn vòng đời tombstone với pane/window để xử lý late data.
+- Vì vậy, benchmark nên tách thành:
+  - **benchmark external** cho các lõi adapt (`Ada-Context`, `Rapidash`, `Weever`),
+  - **ablation nội bộ** để chứng minh phần nâng cấp riêng của WAVES.

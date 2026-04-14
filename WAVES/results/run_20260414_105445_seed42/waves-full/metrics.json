@@ -1,0 +1,91 @@
+{
+  "config": {
+    "baseline": "waves-full",
+    "seed": 42,
+    "total_events": 500,
+    "processed_events": 500,
+    "warmup": 10,
+    "elapsed_seconds": 0.076
+  },
+  "system": {
+    "throughput_events_per_sec": 6612.8,
+    "avg_latency_ms": 0.14,
+    "p50_latency_ms": 0.052,
+    "p95_latency_ms": 0.086,
+    "p99_latency_ms": 0.15
+  },
+  "alerts": {
+    "total": 0,
+    "provisional": 0,
+    "final": 0,
+    "retraction": 0,
+    "by_dc": {}
+  },
+  "accuracy": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "tp": 0,
+    "fp": 0,
+    "fn": 20,
+    "gt_in_window": 20
+  },
+  "meta_events": 0,
+  "pane_stats": {
+    "p_1704067200000_1704067260000": {
+      "closed": true,
+      "kdtree": true,
+      "buffer_size": 0
+    },
+    "p_1704067260000_1704067320000": {
+      "closed": true,
+      "kdtree": true,
+      "buffer_size": 0
+    },
+    "p_1704067320000_1704067380000": {
+      "closed": true,
+      "kdtree": true,
+      "buffer_size": 0
+    },
+    "p_1704067380000_1704067440000": {
+      "closed": true,
+      "kdtree": true,
+      "buffer_size": 0
+    },
+    "p_1704067440000_1704067500000": {
+      "closed": true,
+      "kdtree": true,
+      "buffer_size": 0
+    },
+    "p_1704067500000_1704067560000": {
+      "closed": false,
+      "kdtree": false,
+      "buffer_size": 44
+    },
+    "p_1704067560000_1704067620000": {
+      "closed": false,
+      "kdtree": false,
+      "buffer_size": 57
+    },
+    "p_1704067620000_1704067680000": {
+      "closed": false,
+      "kdtree": false,
+      "buffer_size": 44
+    },
+    "p_1704067680000_1704067740000": {
+      "closed": false,
+      "kdtree": false,
+      "buffer_size": 79
+    },
+    "p_1704067740000_1704067800000": {
+      "closed": false,
+      "kdtree": false,
+      "buffer_size": 68
+    },
+    "p_1704067800000_1704067860000": {
+      "closed": false,
+      "kdtree": false,
+      "buffer_size": 51
+    }
+  }
+}
