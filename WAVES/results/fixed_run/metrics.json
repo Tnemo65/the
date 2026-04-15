@@ -1,0 +1,41 @@
+{
+  "config": {
+    "benchmark": "data/benchmark.parquet",
+    "seed": 42,
+    "total_events": 10000,
+    "processed_events": 10000,
+    "warmup": 1000,
+    "elapsed_seconds": 10.849,
+    "pipeline_config": {}
+  },
+  "system": {
+    "throughput_events_per_sec": 921.75,
+    "avg_latency_ms": 1.047,
+    "p50_latency_ms": 0.405,
+    "p95_latency_ms": 3.11,
+    "p99_latency_ms": 4.218
+  },
+  "alerts": {
+    "total": 9710,
+    "provisional": 4855,
+    "final": 4855,
+    "retraction": 0,
+    "by_dc": {
+      "DC2": 9326,
+      "DC3": 384
+    }
+  },
+  "accuracy": {
+    "precision": 0.0427,
+    "recall": 0.0017,
+    "f1": 0.0034,
+    "tp": 199,
+    "fp": 4464,
+    "fn": 113890,
+    "gt_violation_events": 114089,
+    "detected_events": 4663
+  },
+  "meta_events": 0,
+  "sealed_windows": 4855,
+  "cleaned_alerts": 0
+}

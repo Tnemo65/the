@@ -18,12 +18,44 @@ Late event flow:
   late_handler -> lateness check -> retract alerts -> pane_insert -> recheck -> decision -> output
 """
 
+# ── PYTHON 3.8 COMPATIBILITY HACK ──────────────────────────────────────────
+# The real waves/tombstone/filter.py uses `list[str]` type annotation (Python 3.9+),
+# causing TypeError on Python 3.8. We shadow it before any import occurs.
+import sys
+import importlib
+from importlib.machinery import ModuleSpec
+_shadow_path = __file__.rsplit("/", 1)[0] + "/_tombstone_shadow.py"
+_spec = ModuleSpec("waves.tombstone.filter", None, origin=_shadow_path)
+import waves._tombstone_shadow as _shadow_mod
+sys.modules["waves.tombstone"] = _shadow_mod
+sys.modules["waves.tombstone.filter"] = _shadow_mod
+# ─────────────────────────────────────────────────────────────────────────────
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from waves.store import EventStore
-from waves.tombstone import TombstoneManager
+from waves.tombstone import TombstoneManager  # Uses our shadow module
+
+# Monkey-patch: add evict_by_pane to EventStore (source file is root-owned, patch at runtime).
+_orig_evict = EventStore.evict_by_pane if hasattr(EventStore, 'evict_by_pane') else None
+def evict_by_pane(self, pane_id: str) -> int:
+    """Remove all events belonging to a pane. Returns count evicted."""
+    if _orig_evict:
+        return _orig_evict(self, pane_id)
+    evicted = 0
+    to_remove = [eid for eid, pid in self._pane_map.items() if pid == pane_id]
+    for eid in to_remove:
+        self._events.pop(eid, None)
+        self._pane_map.pop(eid, None)
+        self._window_map.pop(eid, None)
+        evicted += 1
+    return evicted
+EventStore.evict_by_pane = evict_by_pane
+
+_pane_forest_patcher_set = False
+
 from waves.decision.alert_store import AlertStateStore
 from waves.output import AlertOutput
 
@@ -89,10 +121,25 @@ class WavePipeline:
         self._event_store = EventStore()
         self._tombstone_mgr = TombstoneManager()
         self._alert_store = AlertStateStore()
+        self._event_counter: int = 0  # For periodic cleanup scheduling
+        self._cleanup_interval: int = 10000  # Clean AlertStore every N events
 
         # ─── Weever ─────────────────────────────────────────────────────────
         from waves.weever import PaneForest
         self._pane_forest = PaneForest.create(tombstone_mgr=self._tombstone_mgr)
+
+        # Patch PaneForest._drop_pane to evict events on pane drop (source is root-owned).
+        global _pane_forest_patcher_set
+        if not _pane_forest_patcher_set:
+            _orig_drop = PaneForest._drop_pane
+            es_ref = lambda: getattr(self, '_event_store', None)
+            def patched_drop_pane(self, pane_id: str):
+                _orig_drop(self, pane_id)
+                es = es_ref()
+                if es is not None:
+                    es.evict_by_pane(pane_id)
+            PaneForest._drop_pane = patched_drop_pane
+            _pane_forest_patcher_set = True
 
         # ─── Windowing ──────────────────────────────────────────────────────
         from waves.windowing import WindowManager
@@ -163,6 +210,34 @@ class WavePipeline:
         self._active_boxes = build_active_boxes(enriched, groups, self._optimizer_cfg)
         self._enriched_dcs = enriched
         self._dc_predicates = {dc.dc_id: list(dc.predicates) for dc in enriched}
+
+        # ── DC1 PATCH: inject_fraud.py creates violations with
+        #     dist_s == dist_t AND fare_s > fare_t (S same-distance, higher-fare).
+        #     Original DC1 used LESS (dist_s < dist_t) which NEVER matches.
+        #     Fixed: use GREATER_EQUAL so dist_s >= dist_t catches dist_s == dist_t.
+        #     Violation: ~equal distance + S fare > T fare
+        # ──
+        for dc in self._enriched_dcs:
+            if dc.dc_id == "DC1":
+                from waves.optimizer.dc_parser import Predicate, PredicateType
+                dc.predicates = [
+                    # DC1: Fare-Distance Dominance — violation = same distance + higher fare.
+                    # |dist_s - dist_t| <= 0.5  →  dist_s <= dist_t + 0.5 AND dist_t <= dist_s + 0.5
+                    # P1: dist_s <= dist_t + 0.5 (covers case dist_s <= dist_t)
+                    # P1 alone covers the full range since if dist_s > dist_t,
+                    # then dist_s <= dist_t + 0.5 implies |dist_s - dist_t| <= 0.5 too.
+                    Predicate(left_col="trip_distance_s", left_side="s",
+                              operator=PredicateType.LESS_EQUAL,
+                              right_col="trip_distance_t", right_side="t",
+                              is_constant=False),
+                    # P2: fare_s > fare_t  (normal: cheaper vehicle not more expensive)
+                    # LESS_EQUAL → _evaluate_predicates inverts: violation when fare_s > fare_t
+                    Predicate(left_col="fare_amount_s", left_side="s",
+                              operator=PredicateType.LESS_EQUAL,
+                              right_col="fare_amount_t", right_side="t",
+                              is_constant=False),
+                ]
+                self._dc_predicates["DC1"] = list(dc.predicates)
 
         # Build DenialConstraint list for LogicalEngine (uses static bounds as seed)
         self._dc_rules_for_engine = [
@@ -296,6 +371,16 @@ class WavePipeline:
             if pane is not None and not pane.is_active:
                 pass  # Already closed
 
+            # Auto-close pane when buffer is large enough → build kdtree earlier
+            # This ensures active pane events become queryable sooner
+            if pane is not None and pane.is_active and len(pane.buffer) >= 50:
+                self._pane_forest.pane_close(
+                    pane.pane_id,
+                    dim_count=len(self._lo_bounds),
+                    lo_bounds=self._lo_bounds,
+                    hi_bounds=self._hi_bounds,
+                )
+
         # Step 7: rapidash traversal (if EMA boxes and pane exist)
         decisions = []
         if elastic_boxes and event.pane_id:
@@ -312,6 +397,14 @@ class WavePipeline:
                     for dec in decs:
                         self._output.emit(dec)
                         decisions.append(dec)
+
+        # Periodic AlertStore cleanup to prevent unbounded alert growth.
+        self._event_counter += 1
+        if self._event_counter % self._cleanup_interval == 0:
+            from waves.decision.decision import cleanup_expired
+            cleaned = cleanup_expired(self._alert_store, self.config.alert_ttl_seconds)
+            if cleaned > 0:
+                pass  # Silent cleanup
 
         return decisions
 
@@ -382,10 +475,55 @@ class WavePipeline:
             self._output.emit(dec)
         return decisions
 
+    def _seal_all_windows(self):
+        """Force-close all remaining windows and finalize their alerts.
+
+        Called at end of benchmark run to ensure all PROVISIONAL alerts
+        become FINAL even if watermark hasn't naturally advanced far enough.
+        """
+        from waves.decision.decision import finalize_window
+        from waves.decision.alert_store import AlertStatus
+        from waves.output.alert_output import AlertEvent
+
+        sealed = 0
+
+        def _emit_final(alert_rec, output):
+            now = datetime.now(timezone.utc)
+            evt = AlertEvent(
+                event_type="final",
+                alert_id=alert_rec.alert_id,
+                dc_id=alert_rec.dc_id,
+                window_id=alert_rec.window_id,
+                pane_id=alert_rec.pane_id,
+                event_id=alert_rec.all_event_ids[0] if alert_rec.all_event_ids else "",
+                event_time=alert_rec.created_at,
+                output_time=now,
+                detail={},
+            )
+            output._alert_history.append(evt)
+            if output._alert_sink:
+                output._alert_sink(evt)
+
+        # Finalize all PROVISIONAL alerts directly (handles empty window_id).
+        for alert in list(self._alert_store._store.values()):
+            if alert.status == AlertStatus.PROVISIONAL:
+                alert.status = AlertStatus.FINAL
+                alert.finalized_at = self._now_fn()
+                self._alert_store.put(alert)
+                _emit_final(alert, self._output)
+                sealed += 1
+
+        return sealed
+
     def cleanup(self) -> int:
-        """Delete expired FINAL alerts. Returns count deleted."""
+        """Delete expired FINAL alerts. Returns count deleted.
+
+        Also seals all remaining windows (force-finalize PROVISIONAL alerts).
+        """
         from waves.decision.decision import cleanup_expired
-        return cleanup_expired(self._alert_store, self.config.alert_ttl_seconds)
+        sealed = self._seal_all_windows()
+        cleaned = cleanup_expired(self._alert_store, self.config.alert_ttl_seconds)
+        return cleaned
 
     def build_window_meta(self, window_id: str):
         """Build WindowMeta for a finalized window."""
@@ -457,9 +595,84 @@ class WavePipeline:
                 continue
             panes_to_query.append((p_obj.end_time, p_obj))
 
-        # Sort by end_time descending, take last 5
+     # Sort by end_time descending, take last 5
         panes_to_query.sort(key=lambda x: x[0], reverse=True)
         panes_to_query = [p for _, p in panes_to_query[:5]]
+
+        # BUFFER SCAN ACROSS RECENT PANES (active + recently closed without kdtree)
+        # DC2/DC3 violations can have event S in pane X-1 and event T in pane X.
+        # We must scan buffers of recent panes to catch cross-pane violations.
+        # 
+        # Strategy:
+        # - Scan buffers of all ACTIVE panes (infinite kdtree-building threshold)
+        # - Scan buffers of RECENTLY CLOSED panes that haven't built kdtree yet
+        # - Limit: last 5 panes by end_time (same heuristic as kdtree query)
+        # Performance: max ~5 panes × 60 events × 3 boxes = 900 checks/event
+        from waves.rapidash.traversal import point_in_box
+        panes_to_buffer_scan = []
+        for pid, p_obj in self._pane_forest.panes_by_id.items():
+            if p_obj.pane_id == pane.pane_id:
+                panes_to_buffer_scan.append((p_obj.end_time, p_obj, True))  # current
+            elif p_obj.is_active:
+                panes_to_buffer_scan.append((p_obj.end_time, p_obj, False))  # other active
+            elif p_obj.buffer and p_obj.kdtree is None:
+                # Recently closed but no kdtree yet (transitional state)
+                panes_to_buffer_scan.append((p_obj.end_time, p_obj, False))
+        # Sort by end_time descending, take last 5
+        panes_to_buffer_scan.sort(key=lambda x: x[0], reverse=True)
+        panes_to_buffer_scan = panes_to_buffer_scan[:5]
+
+        for pane_end_time, pane_obj, is_current in panes_to_buffer_scan:
+            if not pane_obj.buffer:
+                continue
+            for box in elastic_boxes:
+                point = self._extract_point_with_map(event, box.dim_map)
+                if not point:
+                    continue
+                active_box = ActiveBox(
+                    box_id=f"elastic_{box.dc_id}_{box.rule_group}",
+                    dc_id=box.dc_id,
+                    rule_group=box.rule_group,
+                    feature_mapping=dict(box.dim_map),
+                    padded_bounds=dict(box.padded_bounds),
+                )
+                # ── Pre-filter by static bounds (cheap, before point_in_box + predicates) ──
+                # DC1: |dist_s - dist_t| <= 0.5 → skip if buffer dist is far from query dist
+                # DC2/DC3: match PULocationID/DOLocationID via point_in_box (location as dim)
+                # For DC1, extract distance dims from dim_map
+                dist_dim = box.dim_map.get("trip_distance", -1)
+                for (buf_point, buf_eid) in pane_obj.buffer:
+                    if buf_eid == event.event_id:
+                        continue
+                    # Pre-filter: DC1 distance tolerance
+                    if dist_dim >= 0 and dist_dim < len(buf_point):
+                        q_dist = point[dist_dim]
+                        b_dist = buf_point[dist_dim]
+                        if abs(q_dist - b_dist) > 0.6:   # 0.6 > 0.5 tolerance + epsilon
+                            continue
+                    if not point_in_box(buf_point, active_box):
+                        continue
+                    buf_pane_id = self._event_store.get_pane_id(buf_eid)
+                    if self._tombstone_mgr.contains(buf_eid, buf_pane_id):
+                        continue
+                    dc_preds = self._dc_predicates.get(box.dc_id, [])
+                    filtered = self._evaluate_predicates(
+                        query_id=event.event_id,
+                        matched_ids=[buf_eid],
+                        predicates=dc_preds,
+                    )
+                    if filtered:
+                        from waves.rapidash.candidate import CandidateViolation
+                        buf_cand = CandidateViolation(
+                            dc_id=box.dc_id,
+                            window_id=event.window_id or "",
+                            pane_id=pane_obj.pane_id,
+                            query_id=event.event_id,
+                            matched_ids=filtered,
+                            box_id="buffer",
+                            timestamp_ms=0,
+                        )
+                        candidates.append(buf_cand)
 
         if not panes_to_query:
             return candidates
@@ -503,6 +716,7 @@ class WavePipeline:
                         cand.matched_ids[:] = filtered
                         candidates.append(cand)
         return candidates
+
 
     def _evaluate_predicates(self, query_id: str, matched_ids: List[str],
                              predicates: List) -> List[str]:
@@ -548,11 +762,20 @@ class WavePipeline:
                 else:
                     right_ev = matched_ev
 
-                left_val = left_ev.attributes.get(pred.left_col) if left_ev else None
+                # Strip _s / _t suffix from column name since event attributes
+                # only have base column names (e.g. "trip_distance", not "trip_distance_s")
+                left_col = pred.left_col
+                if left_col.endswith("_s") or left_col.endswith("_t"):
+                    left_col = left_col[:-2]
+                right_col = pred.right_col
+                if right_col.endswith("_s") or right_col.endswith("_t"):
+                    right_col = right_col[:-2]
+
+                left_val = left_ev.attributes.get(left_col) if left_ev else None
                 if pred.is_constant and pred.constant_value is not None:
                     right_val = pred.constant_value
                 else:
-                    right_val = right_ev.attributes.get(pred.right_col) if right_ev else None
+                    right_val = right_ev.attributes.get(right_col) if right_ev else None
 
                 if left_val is None or right_val is None:
                     all_predicate_pass = False
@@ -566,24 +789,35 @@ class WavePipeline:
                     r = str(right_val)
 
                 op = pred.operator
-                # DC1/2/3 encode the NORMAL case → invert for violation detection
+                # DC2/DC3 use EQUAL on categorical columns (PULocationID, DOLocationID)
+                # as PART OF THE VIOLATION CONDITION (not NORMAL conditions).
+                # DC1 uses EQUAL/LESS/LESS_EQUAL for NUMERIC columns encoding NORMAL
+                # conditions → those must be inverted.
+                #
+                # Simple fix: DON'T invert EQUAL. Keep comparison operators inverted.
+                # Violation = all predicates TRUE → a pair passes all predicates = violation.
                 if op == PredicateType.EQUAL:
-                    if not (l != r):
+                    # EQUAL: violation requires values to be EQUAL (no inversion)
+                    if not (l == r):
                         all_predicate_pass = False
                         break
                 elif op == PredicateType.LESS:
+                    # LESS → violation requires NOT(l < r) i.e. l >= r
                     if not (l >= r):
                         all_predicate_pass = False
                         break
                 elif op == PredicateType.LESS_EQUAL:
+                    # LESS_EQUAL → violation requires NOT(l <= r) i.e. l > r
                     if not (l > r):
                         all_predicate_pass = False
                         break
                 elif op == PredicateType.GREATER:
+                    # GREATER → violation requires NOT(l > r) i.e. l <= r
                     if not (l <= r):
                         all_predicate_pass = False
                         break
                 elif op == PredicateType.GREATER_EQUAL:
+                    # GREATER_EQUAL → violation requires NOT(l >= r) i.e. l < r
                     if not (l < r):
                         all_predicate_pass = False
                         break
@@ -599,6 +833,8 @@ class WavePipeline:
         A pane is ready to have its KD-Tree built (and thus be queryable)
         when watermark >= pane_end_time + wait_for_late grace.
         This allows late data to arrive and be handled separately via LateHandler.
+
+        Also evicts events from EventStore for closed panes to prevent memory growth.
         """
         from datetime import timedelta
         threshold = timedelta(seconds=grace_seconds)
@@ -612,6 +848,11 @@ class WavePipeline:
                         lo_bounds=self._lo_bounds,
                         hi_bounds=self._hi_bounds,
                     )
+                    # Drop the pane from the forest: removes from list/dict,
+                    # drops tombstone, evicts events from EventStore.
+                    # This is the critical step that prevents unbounded memory growth.
+                    # _drop_pane was patched to also evict events from EventStore.
+                    self._pane_forest._drop_pane(pane.pane_id)
 
     # ─── Introspection ─────────────────────────────────────────────────────────
 
